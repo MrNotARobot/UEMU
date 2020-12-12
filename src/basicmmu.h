@@ -81,6 +81,10 @@ void b_mmu_munmap(BasicMMU *, addr_t, size_t);
 
 addr_t b_mmu_create_stack(BasicMMU *, int);
 
+enum BasicMMUStackFlags {
+    B_STACKEXEC
+};
+
 // map the loadable segments from the file detailed by the GenericELF struct
 void b_mmu_mmap_loadable(GenericELF *, BasicMMU *);
 

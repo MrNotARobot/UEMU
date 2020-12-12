@@ -86,6 +86,9 @@ static void elf_load32(GenericELF *g_elf)
 
         if (phdr.p_type == PT_LOAD)
             nloadable++;
+
+        if (phdr.p_type == PT_GNU_STACK)
+            g_elf->g_execstack = phdr.p_flags & PF_X;
     }
 
     phoff = ehdr.e_phoff;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2020 Gabriel Manoel 
+/* Copyright (c) 2020 Gabriel Manoel
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
@@ -33,6 +33,8 @@ int main(int argc, char **argv)
     char *executable, *program_name;
     GenericELF g_elf;
     BasicMMU b_mmu;
+    addr_t stack_end;
+    int stack_flags = 0;
 
     if (argc < 2) {
         printf("usage: uemu <program>\n");
@@ -59,9 +61,17 @@ int main(int argc, char **argv)
 
     b_mmu_init(&b_mmu);
 
+    // actually map the segments
     b_mmu_mmap_loadable(&g_elf, &b_mmu);
     if (B_mmu_error(&b_mmu))
         s_error(1, "%s", B_mmu_errstr(&b_mmu));
+
+    // create a stack
+    if (G_elf_execstack(&g_elf))
+        stack_flags = B_STACKEXEC;
+
+    stack_end = b_mmu_create_stack(&b_mmu, stack_flags);
+    (void)stack_end;
 
     g_elf_unload(&g_elf);
     b_mmu_release_recs(&b_mmu);

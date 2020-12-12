@@ -34,6 +34,7 @@ typedef struct {
     uint16_t g_nloadable;
     uint16_t g_machine; // the architecture of the file. See elf.e_machine in elf(5) for values.
     char *g_executable;
+    int g_execstack;
     int g_fd;
 
     struct error_description err;
@@ -50,7 +51,8 @@ enum GenericELF_ERRORS {
 
 #define G_elf_loadable(g_elf) ((g_elf)->g_loadable)
 #define G_elf_nloadable(g_elf) ((g_elf)->g_nloadable)
-#define G_elf_underlfd(g_elf) (g_elf)->g_fd
+#define G_elf_underlfd(g_elf) ((g_elf)->g_fd)
+#define G_elf_execstack(g_elf) ((g_elf)->g_execstack)
 
 // load program information needed for execution.
 void g_elf_load(GenericELF *, const char *);

@@ -41,6 +41,8 @@ uint64_t readx(BasicMMU *, addr_t, int);
 
 static int conf_b_mmu_initial_npages = 4;
 static int conf_b_mmu_page_alloc_incr = 2;
+static addr_t conf_b_mmu_top_stack_address = 0xffffe000;
+static size_t conf_b_mmu_stack_size = 4 * 4096;
 
 
 static void B_mmu_set_error(BasicMMU *b_mmu, int errnum, const char *fmt, ...)
@@ -198,6 +200,7 @@ addr_t b_mmu_mmap(BasicMMU *b_mmu, addr_t virtaddr, size_t memsz, int prot, int 
 
     // page-align address if not already aligned
     virtaddr = virtaddr & ~(pagesize - 1);
+    printf("virtaddr %lx\n", virtaddr);
     record->c_virtaddr = virtaddr;
     record->c_buffer = buffer;
     record->c_perms = perms;
@@ -303,6 +306,24 @@ void b_mmu_mmap_loadable(GenericELF *g_elf, BasicMMU *b_mmu)
         if (B_mmu_error(b_mmu))
             return;
     }
+}
+
+addr_t b_mmu_create_stack(BasicMMU *b_mmu, int flags)
+{
+    ASSERT(b_mmu != NULL);
+
+    addr_t stack;
+    int prot = PROT_READ | PROT_WRITE;
+    addr_t virtaddr = conf_b_mmu_top_stack_address;
+
+    if (flags & B_STACKEXEC)
+        prot |= PROT_EXEC;
+
+    stack = b_mmu_mmap(b_mmu, virtaddr, conf_b_mmu_stack_size, prot, -1, 0, 0);
+    if (B_mmu_error(b_mmu))
+        return 0;
+
+    return stack + conf_b_mmu_stack_size;
 }
 
 // Read/Write functions
