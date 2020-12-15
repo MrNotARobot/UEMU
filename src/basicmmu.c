@@ -41,7 +41,7 @@ uint64_t readx(BasicMMU *, addr_t, int);
 
 static int conf_b_mmu_initial_npages = 4;
 static int conf_b_mmu_page_alloc_incr = 2;
-static addr_t conf_b_mmu_top_stack_address = 0xffffe000;
+static addr_t conf_b_mmu_top_stack_address = 0xfffff000;
 static size_t conf_b_mmu_stack_size = 4 * 4096;
 
 
@@ -200,7 +200,6 @@ addr_t b_mmu_mmap(BasicMMU *b_mmu, addr_t virtaddr, size_t memsz, int prot, int 
 
     // page-align address if not already aligned
     virtaddr = virtaddr & ~(pagesize - 1);
-    printf("virtaddr %lx\n", virtaddr);
     record->c_virtaddr = virtaddr;
     record->c_buffer = buffer;
     record->c_perms = perms;

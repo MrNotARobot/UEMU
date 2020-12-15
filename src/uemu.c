@@ -23,18 +23,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "memory.h"
-#include "generic-elf.h"
+#include "x86/cpu.h"
 #include "system.h"
-#include "basicmmu.h"
 
 int main(int argc, char **argv)
 {
     char *executable, *program_name;
-    GenericELF g_elf;
-    BasicMMU b_mmu;
-    addr_t stack_end;
-    int stack_flags = 0;
 
     if (argc < 2) {
         printf("usage: uemu <program>\n");
@@ -49,30 +43,7 @@ int main(int argc, char **argv)
         executable = find_executable(program_name);
     }
 
-    // map the executable segments to memory.
-    // no shared library is loaded just yet.
-    g_elf_load(&g_elf, executable);
+    c_x86_cpu_exec(executable);
 
-    // we don't need it anymore.
-    xfree(executable);
-
-    if (G_elf_error(&g_elf))
-        s_error(1, "%s", G_elf_errstr(&g_elf));
-
-    b_mmu_init(&b_mmu);
-
-    // actually map the segments
-    b_mmu_mmap_loadable(&g_elf, &b_mmu);
-    if (B_mmu_error(&b_mmu))
-        s_error(1, "%s", B_mmu_errstr(&b_mmu));
-
-    // create a stack
-    if (G_elf_execstack(&g_elf))
-        stack_flags = B_STACKEXEC;
-
-    stack_end = b_mmu_create_stack(&b_mmu, stack_flags);
-    (void)stack_end;
-
-    g_elf_unload(&g_elf);
-    b_mmu_release_recs(&b_mmu);
+    ASSERT_NOTREACHED();
 }

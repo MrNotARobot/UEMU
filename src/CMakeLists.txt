@@ -3,6 +3,9 @@ set(SRCS
     system.c
     generic-elf.c
     basicmmu.c
+    x86/opcodes.c
+    x86/instructions.c
+    x86/cpu.c
     uemu.c
 )
 

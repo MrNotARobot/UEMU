@@ -34,5 +34,6 @@ void s_error(int, const char *, ...) __attribute__((format (printf, 2, 3)));
 
 #define ASSERT(cond) \
     (cond) ? (void)0 : s_error(1, " assert failure (" #cond ") at %s", __FUNCTION__)
+#define ASSERT_NOTREACHED() s_error(1, " assert failure (reached %s)", __FUNCTION__)
 
 #endif /* SYSTEM_H */
