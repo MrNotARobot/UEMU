@@ -87,21 +87,6 @@ char *find_executable(const char *name)
 void s_error(int err, const char *fmt, ...)
 {
     va_list ap;
-    size_t fmtsz = strlen(fmt);
-
-    // find potentially dangerous conversion specifiers
-    for (size_t i = 0; i < fmtsz; i++) {
-        if (fmt[i] != '%')
-            continue;
-
-        switch (fmt[i+1]) {
-            case 'n':
-            case 'p':
-                fprintf(stderr, "\033[31;1merror:\033[0m");
-                fprintf(stderr, "%s:detected dangerous string '%s'", __FUNCTION__, fmt);
-                exit(EINVAL);
-        }
-    }
 
     va_start(ap, fmt);
     fprintf(stderr, "\033[31;1merror:\033[0m");
@@ -110,4 +95,13 @@ void s_error(int err, const char *fmt, ...)
     va_end(ap);
 
     exit(err);
+}
+
+void s_info(const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    fprintf(stderr, "\n");
+    va_end(ap);
 }

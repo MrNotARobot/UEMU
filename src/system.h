@@ -31,6 +31,7 @@
 char *find_executable(const char *);
 
 void s_error(int, const char *, ...) __attribute__((format (printf, 2, 3)));
+void s_info(const char *, ...) __attribute__((format (printf, 1, 2)));
 
 #define ASSERT(cond) \
     (cond) ? (void)0 : s_error(1, " assert failure (" #cond ") at %s", __FUNCTION__)
