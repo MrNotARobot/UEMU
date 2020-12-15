@@ -32,8 +32,8 @@ static size_t alloc_counter = 0;
 static size_t alloc_tableend = 10;
 static void **alloc_table = NULL;
 
-struct opcode x86_opcode_table[0xFF + 1];
-struct opcode x86_opcode_0f_table[0xFF + 1];
+uint8_t x86_prefix_table[] = { PFX_LOCK, PFX_REPNZ, PFX_REP, PFX_BND, PFX_CS, PFX_SS, PFX_DS,
+                               PFX_ES, PFX_FS, PFX_GS, PFX_OPRSZ, PFX_ADDRSZ };
 
 static void add_to_alloc_table(void *);
 static void add_to_alloc_table_realloc(void *, void *);
@@ -292,6 +292,16 @@ static void register_0f_op_prefix_sec(uint8_t prefix, uint8_t primary, uint8_t s
 }
 
 /////////////////
+
+_Bool x86_byteispfx(uint8_t byte)
+{
+    for (size_t i = 0; i < 11; i++) {
+        if (x86_prefix_table[i] == byte)
+            return 1;
+    }
+
+    return 0;
+}
 
 void x86_free_opcode_table(void)
 {
@@ -881,6 +891,7 @@ void x86_init_opcode_table(void)
     register_0f_op_prefix(0xF2, 0x1B, "BNDCN", MPX, bnd_rm32, bnd_rm32, USE_RM, INSTR, x86_bndcn);
     register_0f_op_prefix(0xF3, 0x1B, "BNDMK", MPX, bnd_rm32, bnd_rm32, USE_RM, INSTR, x86_bndmk);
 
+    register_0f_op_prefix_sec(0xF3, 0x1E, 0xfB, "ENDBR32", NONE, OP, OP, USE_RM, INSTR, x86_endbr32);
     register_0f_op_ext(0x1F, 0, "NOP", NONE, rm32, rm16, NO_RM, INSTR, x86_nop);
 
     register_0f_op(0x20, "MOV", NONE, rm32_r32, rm32_r32, NO_RM, INSTR, x86_mov);
