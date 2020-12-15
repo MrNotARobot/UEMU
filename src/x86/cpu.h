@@ -17,6 +17,9 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
+ *
+ * Description:
+ *  defines used by the emulated x86 cpu.
  */
 
 #ifndef CPU_H
@@ -37,20 +40,18 @@ typedef struct {
     GenericELF executable;
     struct exception last_exception;
 
-    // I added the r_ so that the macros used to access them would work with
-    // the c preprocessor concatenation thing
-    reg32_t r_EAX;
-    reg32_t r_ECX;
-    reg32_t r_EDX;
-    reg32_t r_EBX;
-    reg32_t r_ESI;
-    reg32_t r_EDI;
-    reg32_t r_ESP;
-    reg32_t r_EBP;
+    reg32_t EAX;
+    reg32_t ECX;
+    reg32_t EDX;
+    reg32_t EBX;
+    reg32_t ESI;
+    reg32_t EDI;
+    reg32_t ESP;
+    reg32_t EBP;
 
-    reg32_t r_EIP;
+    reg32_t EIP;
 
-    struct {
+    struct EFlags {
         reg32_t reserved : 10;
         reg32_t f_ID : 1;
         reg32_t f_VIP : 1;
@@ -74,7 +75,33 @@ typedef struct {
         reg32_t reserved1 : 1;
         reg32_t f_CF : 1;
     } eflags;
+
+    uint32_t *reg_table[8];
+    struct EFlags *eflags_ptr;
 } x86CPU;
+
+enum x86Registers {
+    EAX,
+    AX = EAX,
+    ECX,
+    CX = ECX,
+    EDX,
+    DX = EDX,
+    EBX,
+    BX = EBX,
+    ESP,
+    SP = ESP,
+    EBP,
+    BP = EBP,
+    ESI,
+    SI = ESI,
+    EDI,
+    DI = EDI,
+    AL, AH,
+    CL, CH,
+    DL, DH,
+    BL, BH,
+};
 
 
 void c_x86_startcpu(x86CPU *);
@@ -83,26 +110,52 @@ void c_x86_stopcpu(x86CPU *);
 // the main loop
 void c_x86_cpu_exec(char *);
 
+void c_x86_raise_exception(x86CPU *, int);
+
+int modrm2reg(uint8_t);
+int reg8islb(int);
+int reg8to32(int);
+
+addr_t c_x86_effctvaddr16(x86CPU *, uint8_t, uint32_t);
+addr_t c_x86_effctvaddr32(x86CPU *, uint8_t, uint32_t);
+
+uint8_t c_x86_rdmem8(x86CPU *, addr_t);
+uint16_t c_x86_rdmem16(x86CPU *, addr_t);
+uint32_t c_x86_rdmem32(x86CPU *, addr_t);
+
+void c_x86_wrmem8(x86CPU *, addr_t, uint8_t);
+void c_x86_wrmem16(x86CPU *, addr_t, uint16_t);
+void c_x86_wrmem32(x86CPU *, addr_t, uint32_t);
+
+
 
 // I like this function-like way of accessing the registers
-// read the 8 low bits of a register (i.e. eAX[al])
-#define C_x86_rdregl8(cpu, reg) ((cpu)->(r_ ## reg) & 0x000000ff)
-// read the 8 high bits of a register (i.e. eAX[ah])
-#define C_x86_rdregh8(cpu, reg) ((cpu)->(r_ ## reg) & 0x0000ff00)
+// read the 8 low/high bits
+#define C_x86_rdreg8(cpu, reg) reg8islb(reg) ? \
+    (  *(((x86CPU *)(cpu))->reg_table[reg8to32(reg)]) & 0x000000ff  ) : \
+    (  *(((x86CPU *)(cpu))->reg_table[reg8to32(reg)]) & 0x0000ff00  )
 // read the 16-bit register from a 32-bit register (i.e. eAX[ah])
-#define C_x86_rdreg16(cpu, reg) ((cpu)->(r_ ## reg) & 0x0000ffff)
+#define C_x86_rdreg16(cpu, reg) (  *(((x86CPU *)(cpu))->reg_table[reg]) & 0x0000ffff  )
 // read the register
-#define C_x86_rdreg32(cpu, reg) ((cpu)-> r_ ## reg)
+#define C_x86_rdreg32(cpu, reg) (  *(((x86CPU *)(cpu))->reg_table[(reg)])  )
 
 // write to the 8 low bits of a register
-#define C_x86_wrregl8(cpu, reg, val) ((cpu)->(r_ ## reg) = ((cpu)->(r_ ## reg) & 0xffffff00) | ((val) & 0x000000ff))
-// write to the 8 high bits of a register
-#define C_x86_wrregh8(cpu, reg, val) ((cpu)->(r_ ## reg) = ((cpu)->(r_ ## reg) & 0xffff00ff) | ((val) & 0x000000ff))
-// write to the 16-bit register from a 32-bit register
-#define C_x86_wrreg16(cpu, reg, val) ((cpu)->(r_ ## reg) = ((cpu)->(r_ ## reg) & 0xffff0000) | ((val) & 0x0000ffff))
-#define C_x86_wrreg32(cpu, reg, val) ((cpu)->(r_ ## reg) = (val))
+#define C_x86_wrreg8(cpu, reg, val) \
+do { \
+    if (reg8islb (reg)) \
+        (  *(((x86CPU *)(cpu))->reg_table[reg8to32(reg)]) =\
+        (  *((x86CPU *)(cpu))->reg_table[reg8to32(reg)] & 0xffffff00  ) | ((val) & 0x000000ff)  );\
+   else \
+        (  *(((x86CPU *)(cpu))->reg_table[reg8to32(reg)]) = \
+        (  *((x86CPU *)(cpu))->reg_table[reg8to32(reg)] & 0xffff00ff  ) | ((val) & 0x0000ff00)  ); \
+} while (0)
 
-#define C_x86_setflag(cpu, eflags_flag) ((cpu)->eflags.(f_ ## eflags_reg) = 1)
-#define C_x86_clearflag(cpu, eflags_flag) ((cpu)->eflags.(f_ ## eflags_reg) = 0)
+// write to the 16-bit register from a 32-bit register
+#define C_x86_wrreg16(cpu, reg, val) (  *(((x86CPU *)(cpu))->reg_table[reg]) =  \
+        (  *((x86CPU *)(cpu))->reg_table[reg] & 0xffff0000  ) | ((val) & 0x0000ffff)  )
+#define C_x86_wrreg32(cpu, reg, val) *(((x86CPU *)(cpu))->reg_table[reg]) = (val)
+
+#define C_x86_setflag(cpu, flag) (  ((x86CPU *)(cpu))->eflags_ptr->f_ ## flag = 1  )
+#define C_x86_clearflag(cpu, flag) (  ((x86CPU *)(cpu))->eflags_ptr->f_ ## flag = 0  )
 
 #endif /* CPU_H */

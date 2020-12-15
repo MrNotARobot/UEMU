@@ -17,6 +17,9 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
+ *
+ * DESCRIPTION:
+ *  an emulated x86 cpu.
  */
 
 #include <stdlib.h>
@@ -39,15 +42,15 @@ void c_x86_startcpu(x86CPU *cpu)
     x86_init_opcode_table();
     b_mmu_init(&cpu->mmu);
 
-    cpu->r_EAX = 0;
-    cpu->r_ECX = 0;
-    cpu->r_EDX = 0;
-    cpu->r_EBX = 0;
-    cpu->r_ESI = 0;
-    cpu->r_EDI = 0;
-    cpu->r_ESP = 0;
-    cpu->r_EBP = 0;
-    cpu->r_EIP = 0;
+    cpu->EAX = 0;
+    cpu->ECX = 0;
+    cpu->EDX = 0;
+    cpu->EBX = 0;
+    cpu->ESI = 0;
+    cpu->EDI = 0;
+    cpu->ESP = 0;
+    cpu->EBP = 0;
+    cpu->EIP = 0;
 
     cpu->eflags.f_AC = 0;
     cpu->eflags.f_VM = 0;
@@ -64,6 +67,16 @@ void c_x86_startcpu(x86CPU *cpu)
     cpu->eflags.f_PF = 0;
     cpu->eflags.reserved1 = 1;
     cpu->eflags.f_CF = 0;
+
+    cpu->reg_table[EAX] = &cpu->EAX;
+    cpu->reg_table[ECX] = &cpu->ECX;
+    cpu->reg_table[EDX] = &cpu->EDX;
+    cpu->reg_table[EBX] = &cpu->EBX;
+    cpu->reg_table[ESP] = &cpu->ESP;
+    cpu->reg_table[EBP] = &cpu->EBP;
+    cpu->reg_table[ESI] = &cpu->ESI;
+    cpu->reg_table[EDI] = &cpu->EDI;
+    cpu->eflags_ptr = &cpu->eflags;
 }
 
 
@@ -80,9 +93,184 @@ void c_x86_stopcpu(x86CPU *cpu)
     xfree(cpu);
 }
 
-#define update_eip8(cpu) (cpu)->r_EIP+=1
-#define update_eip16(cpu) (cpu)->r_EIP+=2
-#define update_eip32(cpu) (cpu)->r_EIP+=4
+void c_x86_raise_exception(x86CPU *cpu, int exct)
+{
+    ASSERT(cpu != NULL);
+
+    switch (exct) {
+        case INT_UD:
+            c_x86_stopcpu(cpu);
+            s_error(1, "Invalid Instruction at 0x%08x", cpu->EIP);
+        default:
+            break;
+    }
+}
+
+
+int modrm2reg(uint8_t modrm)
+{
+    int reg = 0;
+    switch (modrm) {
+        case 0x00: case 0x01: case 0x02: case 0x03: case 0x04: case 0x05: case 0x06:
+        case 0x07: case 0x40: case 0x41: case 0x42: case 0x43: case 0x44: case 0x45:
+        case 0x46: case 0x47: case 0x80: case 0x81: case 0x82: case 0x83: case 0x84:
+        case 0x85: case 0x86: case 0x87: case 0xC0: case 0xC1: case 0xC2: case 0xC3:
+        case 0xC4: case 0xC5: case 0xC6: case 0xC7:
+            reg = EAX; break;
+        case 0x08: case 0x09: case 0x0A: case 0x0B: case 0x0C: case 0x0D: case 0x0E:
+        case 0x0F: case 0x48: case 0x49: case 0x4A: case 0x4B: case 0x4C: case 0x4D:
+        case 0x4E: case 0x4F: case 0x88: case 0x89: case 0x8A: case 0x8B: case 0x8C:
+        case 0x8D: case 0x8E: case 0x8F: case 0xC8: case 0xC9: case 0xCA: case 0xCB:
+        case 0xCC: case 0xCD: case 0xCE: case 0xCF:
+            reg = ECX; break;
+        case 0x10: case 0x11: case 0x12: case 0x13: case 0x14: case 0x15: case 0x16:
+        case 0x17: case 0x50: case 0x51: case 0x52: case 0x53: case 0x54: case 0x55:
+        case 0x56: case 0x57: case 0x90: case 0x91: case 0x92: case 0x93: case 0x94:
+        case 0x95: case 0x96: case 0x97: case 0xD0: case 0xD1: case 0xD2: case 0xD3:
+        case 0xD4: case 0xD5: case 0xD6: case 0xD7:
+            reg = EDX; break;
+        case 0x18: case 0x19: case 0x1A: case 0x1B: case 0x1C: case 0x1D: case 0x1E:
+        case 0x1F: case 0x58: case 0x59: case 0x5A: case 0x5B: case 0x5C: case 0x5D:
+        case 0x5E: case 0x5F: case 0x98: case 0x99: case 0x9A: case 0x9B: case 0x9C:
+        case 0x9D: case 0x9E: case 0x9F: case 0xD8: case 0xD9: case 0xDA: case 0xDB:
+        case 0xDC: case 0xDD: case 0xDE: case 0xDF:
+            reg = EBX; break;
+        case 0x20: case 0x21: case 0x22: case 0x23: case 0x24: case 0x25: case 0x26:
+        case 0x27: case 0x60: case 0x61: case 0x62: case 0x63: case 0x64: case 0x65:
+        case 0x66: case 0x67: case 0xA0: case 0xA1: case 0xA2: case 0xA3: case 0xA4:
+        case 0xA5: case 0xA6: case 0xA7: case 0xE0: case 0xE1: case 0xE2: case 0xE3:
+        case 0xE4: case 0xE5: case 0xE6: case 0xE7:
+            reg = ESP; break;
+        case 0x28: case 0x29: case 0x2A: case 0x2B: case 0x2C: case 0x2D: case 0x2E:
+        case 0x2F: case 0x68: case 0x69: case 0x6A: case 0x6B: case 0x6C: case 0x6D:
+        case 0x6E: case 0x6F: case 0xA8: case 0xA9: case 0xAA: case 0xAB: case 0xAC:
+        case 0xAD: case 0xAE: case 0xAF: case 0xE8: case 0xE9: case 0xEA: case 0xEB:
+        case 0xEC: case 0xED: case 0xEE: case 0xEF:
+            reg = EBP; break;
+        case 0x30: case 0x31: case 0x32: case 0x33: case 0x34: case 0x35: case 0x36:
+        case 0x37: case 0x70: case 0x71: case 0x72: case 0x73: case 0x74: case 0x75:
+        case 0x76: case 0x77: case 0xB0: case 0xB1: case 0xB2: case 0xB3: case 0xB4:
+        case 0xB5: case 0xB6: case 0xB7: case 0xF0: case 0xF1: case 0xF2: case 0xF3:
+        case 0xF4: case 0xF5: case 0xF6: case 0xF7:
+            reg = ESI; break;
+        case 0x38: case 0x39: case 0x3A: case 0x3B: case 0x3C: case 0x3D: case 0x3E:
+        case 0x3F: case 0x78: case 0x79: case 0x7A: case 0x7B: case 0x7C: case 0x7D:
+        case 0x7E: case 0x7F: case 0xB8: case 0xB9: case 0xBA: case 0xBB: case 0xBC:
+        case 0xBD: case 0xBE: case 0xBF: case 0xF8: case 0xF9: case 0xFA: case 0xFB:
+        case 0xFC: case 0xFD: case 0xFE: case 0xFF:
+            reg = EDI; break;
+    }
+
+    return reg;
+}
+
+int reg8islb(int reg)
+{
+    _Bool is_lb = 0;
+    switch (reg) {
+        case AL: case CL: case DL: case BL:
+            is_lb = 1; break;
+        default:
+            break;
+    }
+
+    return is_lb;
+}
+
+int reg8to32(int reg)
+{
+    int reg32 = 0;
+
+    switch (reg) {
+        case AL: case AH: reg32 = EAX; break;
+        case CL: case CH: reg32 = ECX; break;
+        case DL: case DH: reg32 = EDX; break;
+        case BL: case BH: reg32 = EBX; break;
+        default: break;
+    }
+
+    return reg32;
+}
+
+
+addr_t c_x86_effctvaddr16(x86CPU *cpu, uint8_t modrm, uint32_t imm)
+{
+    ASSERT(cpu != NULL);
+    uint8_t mod = modrm & MODRM_MOD_BIT_MASK >> 6;
+    uint8_t rm = modrm & MODRM_RM_BIT_MASK;
+    addr_t effctvaddr = 0;
+
+    if (mod == 0) {
+        switch (rm) {
+            case 0b000: effctvaddr = C_x86_rdreg16(cpu, EBX) + C_x86_rdreg16(cpu, ESI); break;
+            case 0b001: effctvaddr = C_x86_rdreg16(cpu, EBX) + C_x86_rdreg16(cpu, EDI); break;
+            case 0b010: effctvaddr = C_x86_rdreg16(cpu, EBP) + C_x86_rdreg16(cpu, ESI); break;
+            case 0b011: effctvaddr = C_x86_rdreg16(cpu, EBP) + C_x86_rdreg16(cpu, EDI); break;
+            case 0b100: effctvaddr = C_x86_rdreg16(cpu, ESI); break;
+            case 0b101: effctvaddr = C_x86_rdreg16(cpu, EDI); break;
+            case 0b110: effctvaddr = imm; break;
+            case 0b111: effctvaddr = C_x86_rdreg16(cpu, EBX); break;
+        }
+    } else if (mod == 1 || mod == 2) {
+        switch (rm) {
+            case 0b000: effctvaddr = C_x86_rdreg16(cpu, EBX) + imm; break;
+            case 0b001: effctvaddr = C_x86_rdreg16(cpu, EBX) + imm; break;
+            case 0b010: effctvaddr = C_x86_rdreg16(cpu, EBP) + imm; break;
+            case 0b011: effctvaddr = C_x86_rdreg16(cpu, EBP) + imm; break;
+            case 0b100: effctvaddr = C_x86_rdreg16(cpu, ESI) + imm; break;
+            case 0b101: effctvaddr = C_x86_rdreg16(cpu, EDI) + imm; break;
+            case 0b110: effctvaddr = C_x86_rdreg16(cpu, EBP) + imm; break;
+            case 0b111: effctvaddr = C_x86_rdreg16(cpu, EBX) + imm; break;
+        }
+    } // mod == 3 are registers, so we return zero
+
+    return effctvaddr;
+}
+
+
+addr_t c_x86_effctvaddr32(x86CPU *cpu, uint8_t modrm, uint32_t imm)
+{
+    ASSERT(cpu != NULL);
+    uint8_t mod = modrm & MODRM_MOD_BIT_MASK >> 6;
+    uint8_t rm = modrm & MODRM_RM_BIT_MASK;
+    addr_t effctvaddr = 0;
+
+    if (mod == 0) {
+        switch (rm) {
+            case 0b000: effctvaddr = C_x86_rdreg32(cpu, EAX); break;
+            case 0b001: effctvaddr = C_x86_rdreg32(cpu, ECX); break;
+            case 0b010: effctvaddr = C_x86_rdreg32(cpu, EDX); break;
+            case 0b011: effctvaddr = C_x86_rdreg32(cpu, EBX); break;
+            case 0b100:
+                // TODO
+                s_error(1, "TODO: calculate effective address with SIB");
+                break;
+            case 0b101: effctvaddr = cpu->EIP + imm; break;
+            case 0b110: effctvaddr = C_x86_rdreg32(cpu, ESI); break;
+            case 0b111: effctvaddr = C_x86_rdreg32(cpu, EDI); break;
+        }
+    } else if (mod == 1 || mod == 2) {
+        switch (rm) {
+            case 0b000: effctvaddr = C_x86_rdreg32(cpu, EAX) + imm; break;
+            case 0b001: effctvaddr = C_x86_rdreg32(cpu, ECX) + imm; break;
+            case 0b010: effctvaddr = C_x86_rdreg32(cpu, EDX) + imm; break;
+            case 0b011: effctvaddr = C_x86_rdreg32(cpu, EBX) + imm; break;
+            case 0b100:
+                // TODO
+                s_error(1, "TODO: calculate effective address with SIB");
+                break;
+            case 0b101: effctvaddr = C_x86_rdreg32(cpu, EBP) + imm; break;
+            case 0b110: effctvaddr = C_x86_rdreg32(cpu, ESI) + imm; break;
+            case 0b111: effctvaddr = C_x86_rdreg32(cpu, EDI) + imm; break;
+        }
+    } // mod == 3 are registers, so we return zero
+
+    return effctvaddr;
+}
+
+#define update_eip8(cpu) (cpu)->EIP+=1
+#define update_eip16(cpu) (cpu)->EIP+=2
+#define update_eip32(cpu) (cpu)->EIP+=4
 #define set_fetch_err(instr, byte) \
     do {        \
         (instr)->fail_to_fetch = 1;     \
@@ -112,14 +300,14 @@ static void fetch(x86CPU *cpu, struct instruction *instr)
     instr->fail_to_fetch = 0;
     instr->fail_byte = 0;
 
-    byte = b_mmu_read8(&cpu->mmu, C_x86_rdreg32(cpu, EIP));
+    byte = b_mmu_read8(&cpu->mmu, cpu->EIP);
     update_eip8(cpu);
 
     // handles prefixes
     if (x86_byteispfx(byte)) {
         data.pfx = byte;
 
-        byte = b_mmu_read8(&cpu->mmu, C_x86_rdreg32(cpu, EIP));
+        byte = b_mmu_read8(&cpu->mmu, cpu->EIP);
         update_eip8(cpu);
 
         if (byte == PFX_OPRSZ)
@@ -133,7 +321,7 @@ static void fetch(x86CPU *cpu, struct instruction *instr)
     if (byte == 0x0F) {
         table = x86_opcode_0f_table;
 
-        byte = b_mmu_read8(&cpu->mmu, C_x86_rdreg32(cpu, EIP));
+        byte = b_mmu_read8(&cpu->mmu, cpu->EIP);
         update_eip8(cpu);
 
     }
@@ -148,7 +336,7 @@ static void fetch(x86CPU *cpu, struct instruction *instr)
 
     // handle instructions with secondary bytes (see AAM/AAD)
     if (op.o_sec_table) {
-        byte2 = b_mmu_read8(&cpu->mmu, C_x86_rdreg32(cpu, EIP));
+        byte2 = b_mmu_read8(&cpu->mmu, cpu->EIP);
 
         for (size_t i = 0; i < op.o_sec_tablesz; i++) {
             if (op.o_sec_table[i].o_opcode == byte2) {
@@ -162,7 +350,7 @@ static void fetch(x86CPU *cpu, struct instruction *instr)
 
     // handle Mod/RM and opcode extensions
     if (op.o_use_rm) {
-        data.modrm = b_mmu_read8(&cpu->mmu, C_x86_rdreg32(cpu, EIP));
+        data.modrm = b_mmu_read8(&cpu->mmu, cpu->EIP);
         update_eip8(cpu);
 
         switch (data.modrm & MODRM_MOD_BIT_MASK) {
@@ -170,7 +358,7 @@ static void fetch(x86CPU *cpu, struct instruction *instr)
             case 1: // MOD 01 RM 100
             case 2: // MOD 10 RM 100
                 if ((data.modrm & MODRM_RM_BIT_MASK) == 4) {
-                    data.sib = b_mmu_read8(&cpu->mmu, C_x86_rdreg32(cpu, EIP));
+                    data.sib = b_mmu_read8(&cpu->mmu, cpu->EIP);
                     update_eip8(cpu);
                 }
                 break;
@@ -181,13 +369,16 @@ static void fetch(x86CPU *cpu, struct instruction *instr)
 
     // handle instructions with type <prefix> <primary> [secondary]
     if (op.o_prefix && data.pfx) {
-        if (table == x86_opcode_table)
-            op = *op.o_prefix;
-        else if (table == x86_opcode_0f_table)
-            op = op.o_prefix[data.pfx & TABLE_0F_PREFIX_MASK];
+        if (table == x86_opcode_table) {
+            if (data.pfx == op.o_prefix->o_opcode)
+                op = *op.o_prefix;
+        } else if (table == x86_opcode_0f_table) {
+            if (data.pfx == op.o_prefix[data.pfx & TABLE_0F_PREFIX_MASK].o_opcode)
+                op = op.o_prefix[data.pfx & TABLE_0F_PREFIX_MASK];
+        }
 
         if (op.o_sec_table) {
-            byte2 = b_mmu_read8(&cpu->mmu, C_x86_rdreg32(cpu, EIP));
+            byte2 = b_mmu_read8(&cpu->mmu, cpu->EIP);
 
             for (size_t i = 0; i < op.o_sec_tablesz; i++) {
                 if (op.o_sec_table[i].o_opcode == byte2) {
@@ -243,7 +434,7 @@ static void fetch(x86CPU *cpu, struct instruction *instr)
         case xmm1_xmm2m32_imm8:
         case xmm1_xmm2m64_imm8:
         case xmm1_xmm2m128_imm8:
-            data.imm1 = b_mmu_read8(&cpu->mmu, C_x86_rdreg32(cpu, EIP));
+            data.imm1 = b_mmu_read8(&cpu->mmu, cpu->EIP);
             update_eip8(cpu);
             break;
         case imm16:
@@ -252,39 +443,39 @@ static void fetch(x86CPU *cpu, struct instruction *instr)
         case rm16_imm16:
         case r16_rm16_imm16:
         case rela16:
-            data.imm1 = b_mmu_read16(&cpu->mmu, C_x86_rdreg32(cpu, EIP));
+            data.imm1 = b_mmu_read16(&cpu->mmu, cpu->EIP);
             update_eip16(cpu);
             break;
         case eAX_imm32:
         case rela32:
-            data.imm1 = b_mmu_read32(&cpu->mmu, C_x86_rdreg32(cpu, EIP));
+            data.imm1 = b_mmu_read32(&cpu->mmu, cpu->EIP);
             update_eip32(cpu);
             break;
         case rela16_16:
         case ptr16_16:
-            data.imm1 = b_mmu_read16(&cpu->mmu, C_x86_rdreg32(cpu, EIP));
+            data.imm1 = b_mmu_read16(&cpu->mmu, cpu->EIP);
             update_eip16(cpu);
-            data.imm2 = b_mmu_read16(&cpu->mmu, C_x86_rdreg32(cpu, EIP));
+            data.imm2 = b_mmu_read16(&cpu->mmu, cpu->EIP);
             update_eip16(cpu);
             break;
         case rela16_32:
         case ptr16_32:
-            data.imm1 = b_mmu_read16(&cpu->mmu, C_x86_rdreg32(cpu, EIP));
+            data.imm1 = b_mmu_read16(&cpu->mmu, cpu->EIP);
             update_eip16(cpu);
-            data.imm2 = b_mmu_read32(&cpu->mmu, C_x86_rdreg32(cpu, EIP));
+            data.imm2 = b_mmu_read32(&cpu->mmu, cpu->EIP);
             update_eip32(cpu);
             break;
         case imm16_imm8:
-            data.imm1 = b_mmu_read16(&cpu->mmu, C_x86_rdreg32(cpu, EIP));
+            data.imm1 = b_mmu_read16(&cpu->mmu, cpu->EIP);
             update_eip16(cpu);
-            data.imm2 = b_mmu_read8(&cpu->mmu, C_x86_rdreg32(cpu, EIP));
+            data.imm2 = b_mmu_read8(&cpu->mmu, cpu->EIP);
             update_eip8(cpu);
             break;
         case imm32:
         case imm32_eAX:
         case rm32_imm32:
         case r32_rm32_imm32:
-            data.imm1 = b_mmu_read32(&cpu->mmu, C_x86_rdreg32(cpu, EIP));
+            data.imm1 = b_mmu_read32(&cpu->mmu, cpu->EIP);
             update_eip32(cpu);
             break;
         case AX_r16:
@@ -424,19 +615,17 @@ void c_x86_cpu_exec(char *executable)
     if (G_elf_execstack(&cpu->executable))
         stack_flags |= B_STACKEXEC;
 
-    cpu->r_ESP = cpu->r_EBP = b_mmu_create_stack(&cpu->mmu, stack_flags);
+    cpu->ESP = cpu->EBP = b_mmu_create_stack(&cpu->mmu, stack_flags);
 
-    cpu->r_EIP = cpu->executable.g_entryp;
+    cpu->EIP = cpu->executable.g_entryp;
 
     while (1) {
         fetch(cpu, &instr);
 
-        if (instr.fail_to_fetch) {
-            s_info("emulator: Invalid Instruction at 0x%08x", cpu->r_EIP);
-            break;
-        }
-
-        instr.handler(cpu, instr.data);
+        if (instr.fail_to_fetch)
+            c_x86_raise_exception(cpu, INT_UD);
+        else
+            instr.handler(cpu, instr.data);
         // TODO: handle exceptions? I think it would be cool to imitate a real x86 cpu
         // handling of exceptions
     }
