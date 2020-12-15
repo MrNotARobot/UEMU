@@ -40,6 +40,7 @@ typedef struct page_info {
 
 typedef struct {
     addr_t c_virtaddr;    // virtual address
+    addr_t c_virtaddr_end;    // end of the mapping
     void * c_buffer;    // allocated memory (in this context, it helps visualizing as
                         // the physical memory)
     size_t c_memsz;

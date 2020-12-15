@@ -68,6 +68,7 @@ static void *translate_virtaddr(BasicMMU *b_mmu, addr_t virtaddr)
     void *buffer = NULL;
     addr_t offset;
 
+    // find the record with our address
     for (size_t i = 0; i < b_mmu->max_records; i++) {
         record = &b_mmu->records[i];
         if (!record->c_inuse) {
@@ -75,7 +76,7 @@ static void *translate_virtaddr(BasicMMU *b_mmu, addr_t virtaddr)
             continue;
         }
 
-        if ((record->c_virtaddr & virtaddr) == record->c_virtaddr)
+        if (virtaddr >= record->c_virtaddr && virtaddr < record->c_virtaddr_end)
             break;
     }
 
@@ -201,6 +202,7 @@ addr_t b_mmu_mmap(BasicMMU *b_mmu, addr_t virtaddr, size_t memsz, int prot, int 
     // page-align address if not already aligned
     virtaddr = virtaddr & ~(pagesize - 1);
     record->c_virtaddr = virtaddr;
+    record->c_virtaddr_end = virtaddr + memsz;
     record->c_buffer = buffer;
     record->c_perms = perms;
     record->c_memsz = memsz;
