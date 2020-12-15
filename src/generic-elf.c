@@ -112,6 +112,8 @@ static void elf_load32(GenericELF *g_elf)
         }
     }
 
+    g_elf->g_entryp = ehdr.e_entry;
+
 }
 
 static void elf_load64(GenericELF *g_elf)
