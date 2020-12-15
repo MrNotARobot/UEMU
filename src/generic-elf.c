@@ -170,7 +170,7 @@ void g_elf_load(GenericELF *g_elf, const char *executable)
         return;
     }
 
-    g_elf->g_executable = xstrdup(executable);
+    g_elf->g_name = xstrdup(executable);
     g_elf->g_fd = fd;
 
     // make sure we're using the correct ABI
@@ -208,7 +208,7 @@ void g_elf_unload(GenericELF *g_elf)
 {
     ASSERT(g_elf != NULL);
 
-    xfree(g_elf->g_executable);
+    xfree(g_elf->g_name);
     xfree(g_elf->g_loadable);
     close(g_elf->g_fd);
 }

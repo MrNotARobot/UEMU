@@ -33,7 +33,7 @@ typedef struct {
     struct loadable_segment *g_loadable;
     uint16_t g_nloadable;
     uint16_t g_machine; // the architecture of the file. See elf.e_machine in elf(5) for values.
-    char *g_executable;
+    char *g_name;
     int g_execstack;
     int g_fd;
 
