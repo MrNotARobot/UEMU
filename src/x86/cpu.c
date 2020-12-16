@@ -94,16 +94,16 @@ void c_x86_raise_exception(x86CPU *cpu, int exct)
         case INT_UD:
             c_x86_stopcpu(cpu);
             if (errstr) {
-                s_error(1, "Invalid Instruction at 0x%08x (%s)", cpu->EIP, errstr);
+                s_error(1, "emulator: Invalid Instruction at 0x%08x (%s)", cpu->EIP, errstr);
             } else {
-                s_error(1, "Invalid Instruction at 0x%08x", cpu->EIP);
+                s_error(1, "emulator: Invalid Instruction at 0x%08x", cpu->EIP);
             }
         case INT_PF:
             c_x86_stopcpu(cpu);
             if (errstr) {
-                s_error(1, "Page Fault (%s)", errstr);
+                s_error(1, "emulator: Page Fault (%s)", errstr);
             } else {
-                s_error(1, "Page Fault at 0x%08x", (uint32_t)faulty_addr);
+                s_error(1, "emulator: Page Fault at 0x%08x", (uint32_t)faulty_addr);
             }
         default:
             break;
@@ -349,13 +349,13 @@ static void wrmemx(x86CPU *cpu, addr_t effctvaddr, uint32_t src, int size)
 
     switch (size) {
         case 8:
-            b_mmu_write8(&cpu->mmu, effctvaddr, src);
+            b_mmu_write8(&cpu->mmu, src, effctvaddr);
             break;
         case 16:
-            b_mmu_write16(&cpu->mmu, effctvaddr, src);
+            b_mmu_write16(&cpu->mmu, src, effctvaddr);
             break;
         case 32:
-            b_mmu_write32(&cpu->mmu, effctvaddr, src);
+            b_mmu_write32(&cpu->mmu, src, effctvaddr);
             break;
     }
 

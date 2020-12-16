@@ -600,7 +600,7 @@ void x86_bts(void *cpu, struct exec_data data)
 void x86_mm_call(void *cpu, struct exec_data data)
 {
     addr_t new_esp = C_x86_rdreg32(cpu, ESP) + 4;
-    addr_t new_eip = 0;
+    addr_t new_eip = C_x86_rdreg32(cpu, EIP);
     addr_t effctvaddr;
     _Bool callfar = 0;
 
@@ -659,11 +659,11 @@ void x86_mm_call(void *cpu, struct exec_data data)
         new_esp += 4;
     }
 
-    if (data.oprsz_pfx) {
+    s_info("new_esp %08lx", new_esp);
+    if (data.oprsz_pfx)
         c_x86_wrmem16(cpu, new_esp, zeroxtnd16(C_x86_rdreg16(cpu, EIP)));
-    } else {
+    else
         c_x86_wrmem32(cpu, new_esp, C_x86_rdreg32(cpu, EIP));
-    }
 
     C_x86_wrreg32(cpu, ESP, new_esp);
     C_x86_wrreg32(cpu, EIP, new_eip);
