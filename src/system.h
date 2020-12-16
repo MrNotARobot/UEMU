@@ -30,7 +30,7 @@
 
 char *find_executable(const char *);
 
-void s_error(int, const char *, ...) __attribute__((format (printf, 2, 3)));
+void s_error(int, const char *, ...) __attribute__((format (printf, 2, 3))) __attribute__((noreturn));
 void s_info(const char *, ...) __attribute__((format (printf, 1, 2)));
 
 #define ASSERT(cond) \
