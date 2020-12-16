@@ -51,9 +51,9 @@ typedef struct {
 } table_record_t;
 
 enum TableRecordPerms {
-    PAGEEXEC,
-    PAGEREAD,
-    PAGEWRITE
+    PAGEEXEC = 1,
+    PAGEREAD = 2,
+    PAGEWRITE = 4
 };
 
 typedef struct {
@@ -70,12 +70,17 @@ typedef struct {
 
 enum BasicMMUErrors {
     ENONE,
-    ESEGFAULT
+    ESEGFAULT,
+    EPROT
 };
 
 // initialize the data structures needed.
 void b_mmu_init(BasicMMU *);
 void b_mmu_release_recs(BasicMMU *);
+
+_Bool b_mmu_iswritable(BasicMMU *, addr_t);
+_Bool b_mmu_isreadable(BasicMMU *, addr_t);
+_Bool b_mmu_isexecutable(BasicMMU *, addr_t);
 
 addr_t b_mmu_mmap(BasicMMU *, addr_t, size_t, int, int, off_t, size_t);
 void b_mmu_munmap(BasicMMU *, addr_t, size_t);
@@ -88,6 +93,8 @@ enum BasicMMUStackFlags {
 
 // map the loadable segments from the file detailed by the GenericELF struct
 void b_mmu_mmap_loadable(GenericELF *, BasicMMU *);
+
+uint8_t b_mmu_fetch(BasicMMU *, addr_t);
 
 uint8_t b_mmu_read8(BasicMMU *, addr_t);
 uint16_t b_mmu_read16(BasicMMU *, addr_t);

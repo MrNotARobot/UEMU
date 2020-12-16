@@ -35,13 +35,14 @@
 #include "system.h"
 
 static void B_mmu_set_error(BasicMMU *, int, const char *, ...);
+static table_record_t *lookup(BasicMMU*, addr_t);
 static void *translate_virtaddr(BasicMMU *, addr_t);
-uint64_t readx(BasicMMU *, addr_t, int);
+static uint64_t readx(BasicMMU *, addr_t, int);
 
 
 static int conf_b_mmu_initial_npages = 4;
 static int conf_b_mmu_page_alloc_incr = 2;
-static addr_t conf_b_mmu_top_stack_address = 0xfffff000;
+static addr_t conf_b_mmu_top_stack_address = 0xffffa000;
 static size_t conf_b_mmu_stack_size = 4 * 4096;
 
 
@@ -58,16 +59,9 @@ static void B_mmu_set_error(BasicMMU *b_mmu, int errnum, const char *fmt, ...)
     va_end(ap);
 }
 
-
-/*
- * translates the virtaddr to an actual address in memory
- */
-static void *translate_virtaddr(BasicMMU *b_mmu, addr_t virtaddr)
+static table_record_t *lookup(BasicMMU *b_mmu, addr_t virtaddr)
 {
     table_record_t *record = NULL;
-    void *buffer = NULL;
-    addr_t offset;
-
     // find the record with our address
     for (size_t i = 0; i < b_mmu->max_records; i++) {
         record = &b_mmu->records[i];
@@ -79,6 +73,19 @@ static void *translate_virtaddr(BasicMMU *b_mmu, addr_t virtaddr)
         if (virtaddr >= record->c_virtaddr && virtaddr < record->c_virtaddr_end)
             break;
     }
+
+    return record;
+}
+
+
+/*
+ * translates the virtaddr to an actual address in memory
+ */
+static void *translate_virtaddr(BasicMMU *b_mmu, addr_t virtaddr)
+{
+    table_record_t *record = lookup(b_mmu, virtaddr);
+    void *buffer = NULL;
+    addr_t offset;
 
     if (record) {
         offset = (~record->c_virtaddr) & virtaddr;
@@ -123,6 +130,38 @@ void b_mmu_release_recs(BasicMMU *b_mmu)
 
     xfree(b_mmu->records);
 }
+
+
+_Bool b_mmu_iswritable(BasicMMU *b_mmu, addr_t virtaddr)
+{
+    ASSERT(b_mmu != NULL);
+    table_record_t *record = lookup(b_mmu, virtaddr);
+
+    if (record)
+        return record->c_perms & PAGEWRITE;
+    return 0;
+}
+
+_Bool b_mmu_isreadable(BasicMMU *b_mmu, addr_t virtaddr)
+{
+    ASSERT(b_mmu != NULL);
+    table_record_t *record = lookup(b_mmu, virtaddr);
+
+    if (record)
+        return record->c_perms & PAGEREAD;
+    return 0;
+}
+
+_Bool b_mmu_isexecutable(BasicMMU *b_mmu, addr_t virtaddr)
+{
+    ASSERT(b_mmu != NULL);
+    table_record_t *record = lookup(b_mmu, virtaddr);
+
+    if (record)
+        return record->c_perms & PAGEEXEC;
+    return 0;
+}
+
 
 addr_t b_mmu_mmap(BasicMMU *b_mmu, addr_t virtaddr, size_t memsz, int prot, int fd, off_t offset, size_t filesz)
 {
@@ -291,7 +330,7 @@ void b_mmu_mmap_loadable(GenericELF *g_elf, BasicMMU *b_mmu)
         return;
     }
 
-    for (size_t i = 0; i < G_elf_nloadable(g_elf); i++) {
+    for (size_t i = 0; i < G_elf_nloadable(g_elf); i++, prot = 0) {
         segment = G_elf_loadable(g_elf)[i];
 
         if (segment.s_perms & PF_R)
@@ -324,23 +363,44 @@ addr_t b_mmu_create_stack(BasicMMU *b_mmu, int flags)
     if (B_mmu_error(b_mmu))
         return 0;
 
-    return stack + conf_b_mmu_stack_size;
+    return stack;
 }
 
 // Read/Write functions
+
+uint8_t b_mmu_fetch(BasicMMU *b_mmu, addr_t virtaddr)
+{
+    ASSERT(b_mmu != NULL);
+    void *buffer;
+
+    buffer = translate_virtaddr(b_mmu, virtaddr);
+    if (!buffer)
+        s_error(ESEGFAULT, "emulator: invalid memory read at 0x%lx", virtaddr);
+
+    if (!b_mmu_isreadable(b_mmu, virtaddr))
+        s_error(EPROT, "emulator: attempted read at non-readable page at 0x%lx", virtaddr);
+
+    if (!b_mmu_isexecutable(b_mmu, virtaddr))
+        s_error(EPROT, "emulator: attempted to execute code from a non-executable page at 0x%lx", virtaddr);
+
+
+    return *(uint8_t *)buffer;
+}
+
 
 uint64_t readx(BasicMMU *b_mmu, addr_t virtaddr, int size)
 {
     ASSERT(b_mmu != NULL);
     void *buffer;
-
     u_int64_t bytes = 0;
 
     buffer = translate_virtaddr(b_mmu, virtaddr);
-    if (!buffer) {
-        B_mmu_set_error(b_mmu, ESEGFAULT, "emulator: invalid memory read at 0x%lx", virtaddr);
-        return 0;
-    }
+    if (!buffer)
+        s_error(ESEGFAULT, "emulator: invalid memory read at 0x%lx", virtaddr);
+
+    if (!b_mmu_isreadable(b_mmu, virtaddr))
+        s_error(EPROT, "emulator: attempted read at non-readable page at 0x%lx", virtaddr);
+
 
     switch (size) {
         case 8:
@@ -386,12 +446,15 @@ uint64_t b_mmu_read64(BasicMMU *b_mmu, addr_t virtaddr)
 void writex(BasicMMU *b_mmu, uint64_t bytes, addr_t virtaddr, int size)
 {
     ASSERT(b_mmu != NULL);
-    void *buffer = translate_virtaddr(b_mmu, virtaddr);
+    void *buffer = NULL;
 
-    if (!buffer) {
-        B_mmu_set_error(b_mmu, ESEGFAULT, "emulator: invalid memory read at %ld", virtaddr);
-        return;
-    }
+    buffer = translate_virtaddr(b_mmu, virtaddr);
+    if (!buffer)
+        s_error(ESEGFAULT, "emulator: invalid memory read at %ld", virtaddr);
+
+    if (!b_mmu_iswritable(b_mmu, virtaddr))
+        s_error(EPROT, "emulator: attempted write at non-writable page at 0x%lx", virtaddr);
+
 
     switch (size) {
         case 8:
