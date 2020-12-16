@@ -25,6 +25,7 @@
 #ifndef CPU_H
 #define CPU_H
 
+#include "instructions.h"
 #include <stdint.h>
 
 #include "../basicmmu.h"
@@ -32,13 +33,19 @@
 typedef uint16_t reg16_t;
 typedef uint32_t reg32_t;
 
-struct exception {
+typedef struct {
+    char *f_sym;
+    addr_t f_val;
+} callstack_record_t;
+
+struct exec_state {
+    struct instruction last_instr;
+    callstack_record_t *callstack;
 };
 
 typedef struct {
     BasicMMU mmu;
     GenericELF executable;
-    struct exception last_exception;
 
     reg32_t EAX;
     reg32_t ECX;
@@ -50,6 +57,13 @@ typedef struct {
     reg32_t EBP;
 
     reg32_t EIP;
+
+    reg16_t CS;
+    reg16_t SS;
+    reg16_t DS;
+    reg16_t ES;
+    reg16_t FS;
+    reg16_t GS;
 
     struct EFlags {
         reg32_t reserved : 10;
@@ -76,31 +90,49 @@ typedef struct {
         reg32_t f_CF : 1;
     } eflags;
 
-    uint32_t *reg_table[8];
+    struct exec_state e_state;
+
+    reg32_t *reg_table[9];
     struct EFlags *eflags_ptr;
+    reg16_t *sreg_table[6];
 } x86CPU;
 
+enum x86ExceptionsInterrupts {
+    INT_UD,     // invalid instruction
+    INT_PF,     // Page Fault
+};
+
 enum x86Registers {
-    EAX,
+    EAX = 0,
     AX = EAX,
-    ECX,
+    ECX = 1,
     CX = ECX,
-    EDX,
+    EDX = 2,
     DX = EDX,
-    EBX,
+    EBX = 3,
     BX = EBX,
-    ESP,
+    ESP = 4,
     SP = ESP,
-    EBP,
+    EBP = 5,
     BP = EBP,
-    ESI,
+    ESI = 6,
     SI = ESI,
-    EDI,
+    EDI = 7,
     DI = EDI,
+    EIP = 8,
     AL, AH,
     CL, CH,
     DL, DH,
     BL, BH,
+};
+
+enum x86SegmentRegisters {
+    CS,
+    SS,
+    DS,
+    ES,
+    FS,
+    GS
 };
 
 
@@ -111,14 +143,19 @@ void c_x86_stopcpu(x86CPU *);
 void c_x86_cpu_exec(char *);
 
 void c_x86_raise_exception(x86CPU *, int);
+void c_x86_raise_exception_d(x86CPU *, int, addr_t, const char *);
 
-int modrm2reg(uint8_t);
+int modrm2sreg(uint8_t);
 int reg8islb(int);
 int reg8to32(int);
+int effctvreg(uint8_t);
+
+void c_x86_print_cpustate(x86CPU *);
 
 addr_t c_x86_effctvaddr16(x86CPU *, uint8_t, uint32_t);
-addr_t c_x86_effctvaddr32(x86CPU *, uint8_t, uint32_t);
+addr_t c_x86_effctvaddr32(x86CPU *, uint8_t, uint8_t, uint32_t);
 
+// don't use the MMU interface direcly for reading/writing (USE THESE)
 uint8_t c_x86_rdmem8(x86CPU *, addr_t);
 uint16_t c_x86_rdmem16(x86CPU *, addr_t);
 uint32_t c_x86_rdmem32(x86CPU *, addr_t);
@@ -127,6 +164,13 @@ void c_x86_wrmem8(x86CPU *, addr_t, uint8_t);
 void c_x86_wrmem16(x86CPU *, addr_t, uint16_t);
 void c_x86_wrmem32(x86CPU *, addr_t, uint32_t);
 
+uint8_t c_x86_atomic_rdmem8(x86CPU *, addr_t);
+uint16_t c_x86_atomic_rdmem16(x86CPU *, addr_t);
+uint32_t c_x86_atomic_rdmem32(x86CPU *, addr_t);
+
+void c_x86_atomic_wrmem8(x86CPU *, addr_t, uint8_t);
+void c_x86_atomic_wrmem16(x86CPU *, addr_t, uint16_t);
+void c_x86_atomic_wrmem32(x86CPU *, addr_t, uint32_t);
 
 
 // I like this function-like way of accessing the registers
@@ -137,7 +181,9 @@ void c_x86_wrmem32(x86CPU *, addr_t, uint32_t);
 // read the 16-bit register from a 32-bit register (i.e. eAX[ah])
 #define C_x86_rdreg16(cpu, reg) (  *(((x86CPU *)(cpu))->reg_table[reg]) & 0x0000ffff  )
 // read the register
-#define C_x86_rdreg32(cpu, reg) (  *(((x86CPU *)(cpu))->reg_table[(reg)])  )
+#define C_x86_rdreg32(cpu, reg) (  *(((x86CPU *)(cpu))->reg_table[reg])  )
+
+#define C_x86_rdsreg(cpu, reg) *(    ((x86CPU *)(cpu))->sreg_table[reg]    )
 
 // write to the 8 low bits of a register
 #define C_x86_wrreg8(cpu, reg, val) \
@@ -153,7 +199,9 @@ do { \
 // write to the 16-bit register from a 32-bit register
 #define C_x86_wrreg16(cpu, reg, val) (  *(((x86CPU *)(cpu))->reg_table[reg]) =  \
         (  *((x86CPU *)(cpu))->reg_table[reg] & 0xffff0000  ) | ((val) & 0x0000ffff)  )
-#define C_x86_wrreg32(cpu, reg, val) *(((x86CPU *)(cpu))->reg_table[reg]) = (val)
+#define C_x86_wrreg32(cpu, reg, val)(   *(((x86CPU *)(cpu))->reg_table[reg]) = (val)    )
+
+#define C_x86_wrsreg(cpu, reg, val) (    *(((x86CPU *)(cpu))->sreg_table[reg]) = (val)    )
 
 #define C_x86_setflag(cpu, flag) (  ((x86CPU *)(cpu))->eflags_ptr->f_ ## flag = 1  )
 #define C_x86_clearflag(cpu, flag) (  ((x86CPU *)(cpu))->eflags_ptr->f_ ## flag = 0  )

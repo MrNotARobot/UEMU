@@ -89,7 +89,7 @@ void s_error(int err, const char *fmt, ...)
     va_list ap;
 
     va_start(ap, fmt);
-    fprintf(stderr, "\033[31;1merror:\033[0m");
+    fprintf(stderr, "\033[31;1merror:\033[0m ");
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
     va_end(ap);

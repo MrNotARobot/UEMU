@@ -35,7 +35,7 @@ struct loadable_segment {
 };
 
 // I think this is small enough. Remember that this is a description, not a full log.
-#define ERROR_DESCRIPTION_MAX_SIZE 50
+#define ERROR_DESCRIPTION_MAX_SIZE 80
 struct error_description {
     int errnum;
     char description[ERROR_DESCRIPTION_MAX_SIZE];

@@ -29,13 +29,16 @@
 #define MODRM_REG_BIT_MASK 0b00111000
 #define MODRM_MOD_BIT_MASK 0b11000000
 
+#define rm(modrm)  (    ((modrm) & MODRM_RM_BIT_MASK)           )
+#define reg(modrm) (    ((modrm) & MODRM_REG_BIT_MASK) >> 3     )
+#define mod(modrm) (    ((modrm) & MODRM_MOD_BIT_MASK) >> 6     )
+
 #define TABLE_0F_PREFIX_MASK 5
 
 struct exec_data {
     uint8_t ext;    // extension used to get this instruction
     uint8_t sec;    // secondary opcode used
     uint8_t opc;    // opcode used
-    uint8_t pfx;    // prefix used
     uint8_t modrm;
     uint8_t sib;
 
@@ -44,6 +47,10 @@ struct exec_data {
 
     uint8_t oprsz_pfx : 1;  // operand-size prefix
     uint8_t adrsz_pfx : 1;  // address-size prefix
+    uint8_t lock : 1;    // lock
+    uint8_t repnz : 1;
+    uint8_t rep : 1;
+    uint8_t segovr : 3;     // segment override
 };
 
 typedef void (*d_x86_instruction_handler)(void *, struct exec_data);
@@ -54,8 +61,8 @@ struct instruction {
     struct exec_data data;
     uint8_t fail_to_fetch;
     uint8_t fail_byte;
+    uint8_t size;
 };
-
 
 struct opcode {
     const char *o_name;
@@ -86,6 +93,15 @@ enum {
     PFX_GS = 0x65,
     PFX_OPRSZ = 0x66,
     PFX_ADDRSZ = 0x67
+};
+
+enum {
+    SEG_CS,
+    SEG_SS,
+    SEG_DS,
+    SEG_ES,
+    SEG_FS,
+    SEG_GS,
 };
 
 struct opcode x86_opcode_table[0xFF + 1];
@@ -190,7 +206,6 @@ enum x86OpcodeEncoding {
     r16,
     r16_m16,
     r16_m16_16,
-    r16_m32_16,
     r16_rm8,
     r16_rm16,
     r16_r16m16,
@@ -201,14 +216,12 @@ enum x86OpcodeEncoding {
     r32_mm,
     r32_m32,
     r32_m16_32,
-    r32_m32_16,
     r32_rm32,
     r32_rm8,
     r32_rm16,
     r32_r32m16,
     r32_rm32_imm8,
     r32_rm32_imm32,
-    r32_sib,
     r32_mm_imm8,
     r32_xmm_imm8,
     r32_xmm,
@@ -263,6 +276,7 @@ void x86_init_opcode_table(void);
 void x86_free_opcode_table(void);
 
 _Bool x86_byteispfx(uint8_t);
+uint8_t byte2segovr(uint8_t);
 
 void x86_aaa(void *, struct exec_data);
 void x86_aad(void *, struct exec_data);
@@ -284,7 +298,7 @@ void x86_aesenc(void *, struct exec_data);
 void x86_aesenclast(void *, struct exec_data);
 void x86_aesimc(void *, struct exec_data);
 void x86_aeskeygenassist(void *, struct exec_data);
-void x86_and(void *, struct exec_data);
+void x86_mm_and(void *, struct exec_data);
 void x86_andpd(void *, struct exec_data);
 void x86_andps(void *, struct exec_data);
 void x86_andnpd(void *, struct exec_data);
@@ -309,7 +323,7 @@ void x86_bt(void *, struct exec_data);
 void x86_btc(void *, struct exec_data);
 void x86_btr(void *, struct exec_data);
 void x86_bts(void *, struct exec_data);
-void x86_call(void *, struct exec_data);
+void x86_mm_call(void *, struct exec_data);
 void x86_cbw(void *, struct exec_data);
 void x86_clac(void *, struct exec_data);
 void x86_clc(void *, struct exec_data);
@@ -365,7 +379,7 @@ void x86_divss(void *, struct exec_data);
 void x86_dppd(void *, struct exec_data);
 void x86_dpps(void *, struct exec_data);
 void x86_emms(void *, struct exec_data);
-void x86_endbr32(void *, struct exec_data);
+void x86_mm_endbr32(void *, struct exec_data);
 void x86_enter(void *, struct exec_data);
 void x86_extractps(void *, struct exec_data);
 void x86_f2xm1(void *, struct exec_data);
@@ -507,7 +521,7 @@ void x86_minps(void *, struct exec_data);
 void x86_minsd(void *, struct exec_data);
 void x86_minss(void *, struct exec_data);
 void x86_monitor(void *, struct exec_data);
-void x86_mov(void *, struct exec_data);
+void x86_mm_mov(void *, struct exec_data);
 void x86_movapd(void *, struct exec_data);
 void x86_movaps(void *, struct exec_data);
 void x86_movbe(void *, struct exec_data);
@@ -548,7 +562,7 @@ void x86_mulsd(void *, struct exec_data);
 void x86_mulss(void *, struct exec_data);
 void x86_mwait(void *, struct exec_data);
 void x86_neg(void *, struct exec_data);
-void x86_nop(void *, struct exec_data);
+void x86_mm_nop(void *, struct exec_data);
 void x86_not(void *, struct exec_data);
 void x86_or(void *, struct exec_data);
 void x86_orpd(void *, struct exec_data);
@@ -628,7 +642,7 @@ void x86_pmulhw(void *, struct exec_data);
 void x86_pmulld(void *, struct exec_data);
 void x86_pmullw(void *, struct exec_data);
 void x86_pmuludq(void *, struct exec_data);
-void x86_pop(void *, struct exec_data);
+void x86_mm_pop(void *, struct exec_data);
 void x86_popa(void *, struct exec_data);
 void x86_popcnt(void *, struct exec_data);
 void x86_popf(void *, struct exec_data);
@@ -757,7 +771,7 @@ void x86_xchg(void *, struct exec_data);
 void x86_xend(void *, struct exec_data);
 void x86_xgetbv(void *, struct exec_data);
 void x86_xlat(void *, struct exec_data);
-void x86_xor(void *, struct exec_data);
+void x86_mm_xor(void *, struct exec_data);
 void x86_xorpd(void *, struct exec_data);
 void x86_xorps(void *, struct exec_data);
 void x86_xsetbv(void *, struct exec_data);

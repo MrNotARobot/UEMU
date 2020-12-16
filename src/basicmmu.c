@@ -326,7 +326,7 @@ void b_mmu_mmap_loadable(GenericELF *g_elf, BasicMMU *b_mmu)
     int prot = 0;
 
     if (!g_elf) {
-        B_mmu_set_error(b_mmu, INVALREF, "emulator: invalid reference to emulated MMU");
+        B_mmu_set_error(b_mmu, INVALREF, "invalid reference to emulated MMU");
         return;
     }
 
@@ -374,14 +374,20 @@ uint8_t b_mmu_fetch(BasicMMU *b_mmu, addr_t virtaddr)
     void *buffer;
 
     buffer = translate_virtaddr(b_mmu, virtaddr);
-    if (!buffer)
-        s_error(ESEGFAULT, "emulator: invalid memory read at 0x%lx", virtaddr);
+    if (!buffer) {
+        B_mmu_set_error(b_mmu, ESEGFAULT, "invalid memory read at 0x%lx", virtaddr);
+        return 0;
+    }
 
-    if (!b_mmu_isreadable(b_mmu, virtaddr))
-        s_error(EPROT, "emulator: attempted read at non-readable page at 0x%lx", virtaddr);
+    if (!b_mmu_isreadable(b_mmu, virtaddr)) {
+        B_mmu_set_error(b_mmu, EPROT, "attempted read at non-readable page at 0x%lx", virtaddr);
+        return 0;
+    }
 
-    if (!b_mmu_isexecutable(b_mmu, virtaddr))
-        s_error(EPROT, "emulator: attempted to execute code from a non-executable page at 0x%lx", virtaddr);
+    if (!b_mmu_isexecutable(b_mmu, virtaddr)) {
+        B_mmu_set_error(b_mmu, EPROT, "attempted to execute code from a non-executable page at 0x%lx", virtaddr);
+        return 0;
+    }
 
 
     return *(uint8_t *)buffer;
@@ -395,11 +401,15 @@ uint64_t readx(BasicMMU *b_mmu, addr_t virtaddr, int size)
     u_int64_t bytes = 0;
 
     buffer = translate_virtaddr(b_mmu, virtaddr);
-    if (!buffer)
-        s_error(ESEGFAULT, "emulator: invalid memory read at 0x%lx", virtaddr);
+    if (!buffer) {
+        B_mmu_set_error(b_mmu, ESEGFAULT, "invalid memory read at 0x%lx", virtaddr);
+        return 0;
+    }
 
-    if (!b_mmu_isreadable(b_mmu, virtaddr))
-        s_error(EPROT, "emulator: attempted read at non-readable page at 0x%lx", virtaddr);
+    if (!b_mmu_isreadable(b_mmu, virtaddr)) {
+        B_mmu_set_error(b_mmu, EPROT, "attempted read at non-readable page at 0x%lx", virtaddr);
+        return 0;
+    }
 
 
     switch (size) {
@@ -448,12 +458,17 @@ void writex(BasicMMU *b_mmu, uint64_t bytes, addr_t virtaddr, int size)
     ASSERT(b_mmu != NULL);
     void *buffer = NULL;
 
+    s_info("virtaddr %08lx", virtaddr);
     buffer = translate_virtaddr(b_mmu, virtaddr);
-    if (!buffer)
-        s_error(ESEGFAULT, "emulator: invalid memory read at %ld", virtaddr);
+    if (!buffer) {
+        B_mmu_set_error(b_mmu, ESEGFAULT, "invalid memory read at %ld", virtaddr);
+        return;
+    }
 
-    if (!b_mmu_iswritable(b_mmu, virtaddr))
-        s_error(EPROT, "emulator: attempted write at non-writable page at 0x%lx", virtaddr);
+    if (!b_mmu_iswritable(b_mmu, virtaddr)) {
+        B_mmu_set_error(b_mmu, EPROT, "attempted write at non-writable page at 0x%lx", virtaddr);
+        return;
+    }
 
 
     switch (size) {
