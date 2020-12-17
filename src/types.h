@@ -24,6 +24,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <sys/types.h>
 
 typedef uint64_t addr_t;
 

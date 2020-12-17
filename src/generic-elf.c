@@ -38,6 +38,7 @@ static void elf_load32(GenericELF *);
 static void elf_load64(GenericELF *);
 static void elf_symtab_load32(GenericELF *);
 static void elf_symtab_load64(GenericELF *);
+static char *fetch_symbol_from_file(GenericELF *, off_t, uint32_t, size_t);
 
 static void G_elf_set_error(GenericELF *g_elf, int errnum, const char *fmt, ...)
 {
@@ -185,14 +186,12 @@ static void elf_symtab_load32(GenericELF *g_elf)
 
             g_elf->g_symtabsz++;
             g_elf->g_symtab = xreallocarray(g_elf->g_symtab, g_elf->g_symtabsz, sizeof(ELF_Sym));
-
-            g_elf->g_symtab[g_elf->g_symtabsz-1].s_name = xcalloc(sym.st_size + 1, sizeof(char));
-            if (pread(fd, g_elf->g_symtab[g_elf->g_symtabsz - 1].s_name, sym.st_size, strtab_off+sym.st_name) == -1) {
-                G_elf_set_error(g_elf, errno,  "%s: %s", __FUNCTION__, strerror(errno));
-                return;
-            }
-
+            // we resolve the name at the last moment when the emulator needs it
+            g_elf->g_symtab[g_elf->g_symtabsz-1].s_name = NULL;
+            g_elf->g_symtab[g_elf->g_symtabsz-1].s_strtab = strtab_off;
+            g_elf->g_symtab[g_elf->g_symtabsz-1].s_strtabidx = sym.st_name;
             g_elf->g_symtab[g_elf->g_symtabsz-1].s_value = sym.st_value;
+            g_elf->g_symtab[g_elf->g_symtabsz-1].s_size = sym.st_size;
         }
     }
 
@@ -308,9 +307,27 @@ ELF_Sym g_elf_getsym(GenericELF *g_elf, size_t idx)
     return g_elf->g_symtab[0];  // index zero is a entry with NULL as name and 0 as value
 }
 
-const char *g_elf_getfromstrtab(GenericELF *g_elf, size_t idx)
+static char *fetch_symbol_from_file(GenericELF *g_elf, off_t strtab, uint32_t idx, size_t size)
 {
+
+    char *s = xcalloc(size + 1, sizeof(*s));
+
+    if (pread(g_elf->g_fd, s, size, strtab+idx) == -1) {
+        G_elf_set_error(g_elf, errno,  "%s: %s", __FUNCTION__, strerror(errno));
+        return NULL;
+    }
+
+    return s;
+}
+
+const char *g_elf_getsymbolfor(GenericELF *g_elf, size_t idx)
+{
+    ASSERT(g_elf != NULL);
+
     ELF_Sym sym = g_elf_getsym(g_elf, idx);
+
+    if (!sym.s_name)
+        sym.s_name = fetch_symbol_from_file(g_elf, sym.s_strtab, sym.s_strtabidx, sym.s_size);
     return sym.s_name;
 }
 
@@ -322,10 +339,10 @@ const char *g_elf_lookup(GenericELF *g_elf, addr_t faddr)
     // TODO: optimize this lookup function, use a hash table
 
     for (size_t i = 0; i < g_elf->g_symtabsz; i++) {
-        if (faddr == g_elf->g_symtab[i].s_value)
-            return g_elf->g_symtab[i].s_name;
+        if (faddr == g_elf->g_symtab[i].s_value) {
+            return g_elf_getsymbolfor(g_elf, faddr);
+        }
     }
-
 
     return NULL;
 }
