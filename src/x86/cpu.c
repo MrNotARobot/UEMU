@@ -28,12 +28,13 @@
 #include "cpu.h"
 #include "../system.h"
 #include "../memory.h"
+#include "disassembler.h"
 
 static uint32_t rdmemx(x86CPU *cpu, addr_t effctvaddr, int size);
 static void wrmemx(x86CPU *cpu, addr_t effctvaddr, uint32_t src, int size);
 static void fetch(x86CPU *, struct instruction *);
-static uint8_t displsz16(uint8_t);
-static uint8_t displsz32(uint8_t);
+
+static size_t conf_x86cpu_callstack_maxsize = 10;
 
 //
 // initialization
@@ -66,6 +67,9 @@ void c_x86_startcpu(x86CPU *cpu)
     cpu->sreg_table[CS] = &cpu->CS; cpu->sreg_table[SS] = &cpu->SS;
     cpu->sreg_table[DS] = &cpu->DS; cpu->sreg_table[ES] = &cpu->ES;
     cpu->sreg_table[FS] = &cpu->FS; cpu->sreg_table[GS] = &cpu->GS;
+
+    cpu->e_state.callstack = xcalloc(conf_x86cpu_callstack_maxsize, sizeof(cpu->e_state.callstack));
+    cpu->e_state.callstacksz = conf_x86cpu_callstack_maxsize;
 }
 
 
@@ -79,6 +83,7 @@ void c_x86_stopcpu(x86CPU *cpu)
         g_elf_unload(&cpu->executable);
     b_mmu_release_recs(&cpu->mmu);
 
+    xfree(cpu->e_state.callstack);
     xfree(cpu);
 }
 
@@ -121,15 +126,81 @@ void c_x86_raise_exception_d(x86CPU *cpu, int exct, addr_t fault_addr, const cha
 
 ///////////////
 
+static void c_x86_updatecallstack(x86CPU *cpu)
+{
+    callstack_record_t *record = &cpu->e_state.callstack[cpu->e_state.callstacktop];
+    record->f_rel = cpu->EIP - record->f_val - cpu->e_state.last_instr.size;
+}
+
+void c_x86_add2callstack(x86CPU *cpu, addr_t faddr)
+{
+    ASSERT(cpu != NULL);
+    callstack_record_t *previous_record = &cpu->e_state.callstack[cpu->e_state.callstacktop];
+    size_t i = cpu->e_state.callstacktop + 1;
+    const func_rangemap_t *func;
+    static _Bool first_call = 1;
+    if (first_call)
+        i = 0;
+
+    if (i >= conf_x86cpu_callstack_maxsize)
+        return;
+
+    // set the address to the next instruction
+    previous_record->f_rel = cpu->EIP - previous_record->f_val;
+
+    func = b_mmu_findfunction(&cpu->mmu, faddr);
+
+    s_info("%lx", faddr);
+    if (func)
+        cpu->e_state.callstack[i].f_sym = g_elf_getfromstrtab(&cpu->executable, func->fr_name);
+
+    cpu->e_state.callstack[i].f_val = func->fr_start;
+    cpu->e_state.callstack[i].f_rel = 0;
+    if (!first_call)
+        cpu->e_state.callstacktop += 1;
+
+    if (first_call)
+        first_call = 0;
+
+}
+
 void c_x86_print_cpustate(x86CPU *cpu)
 {
     ASSERT(cpu != NULL);
 
     struct instruction ins = cpu->e_state.last_instr;
+    char *inst_str = x86_disassemble(&ins);
+    uint32_t fsym_rel = cpu->e_state.callstack[cpu->e_state.callstacktop].f_rel;
+    const char *fsym = cpu->e_state.callstack[cpu->e_state.callstacktop].f_sym;
+    const func_rangemap_t *func;
+    const char *branch_fname;
+    addr_t calltarget;
 
-    s_info("[   -----------------------------------------------------   ]");
+    if (strcmp(ins.name, "CALL") == 0) {
+        char *temp = inst_str;
+        calltarget = x86_findcalltarget(cpu, ins.data);
+        func = b_mmu_findfunction(&cpu->mmu, calltarget);
+        if (!func)
+            branch_fname = fsym;
+        else
+            branch_fname = g_elf_getfromstrtab(&cpu->executable, func->fr_name);
 
-    s_info("\n\033[1;36mEIP:\033[0m 0x%08x \033[1;90m( %02x %s )\033[0m", cpu->EIP, ins.data.opc, ins.name);
+        if (calltarget != func->fr_start) {   // an offset inside the function
+            char *offset = int2str(calltarget - func->fr_start);
+            inst_str = xcalloc(strlen(branch_fname) + strlen(inst_str) + + strlen(offset) + 5, sizeof(*inst_str));
+            coolstrcat(inst_str, 6, temp, " <", branch_fname, "+", offset, ">");
+            xfree(offset);
+        } else {
+            inst_str = xcalloc(strlen(branch_fname) + strlen(inst_str) + 4, sizeof(*inst_str));
+            coolstrcat(inst_str, 4, temp, " <", branch_fname, ">");
+        }
+
+        xfree(temp);
+    }
+
+    s_info("[   ----------------------------- x86CPU -----------------------------   ]");
+
+    s_info("\n\033[1;36mEIP:\033[0m 0x%08x \033[1;90m( %02x %s ) \033[1;31m<%s+0x%02x>\033[0m", cpu->e_state.last_eip, ins.data.opc, inst_str, fsym ? fsym : "", fsym_rel);
     s_info("\033[1;97mESP:\033[0m 0x%08x     \033[1;97mEBP:\033[0m 0x%08x", cpu->ESP, cpu->EBP);
     s_info("\033[1;34mEAX:\033[0m 0x%08x     \033[1;34mECX:\033[0m 0x%08x     \033[1;34mEDX:\033[0m 0x%08x", cpu->EAX, cpu->ECX, cpu->EDX);
     s_info("\033[1;34mEBX:\033[0m 0x%08x     \033[1;34mESI:\033[0m 0x%08x     \033[1;34mEDI:\033[0m 0x%08x", cpu->EBX, cpu->ESI, cpu->EDI);
@@ -148,12 +219,23 @@ void c_x86_print_cpustate(x86CPU *cpu)
     addr_t stack = cpu->ESP;
 
     s_info("[STACK]");
-    s_info("\033[1;37m0x%08lx:\033[0m  0x%08x", stack + 20, b_mmu_read32(&cpu->mmu, stack + 20));
-    s_info("\033[1;37m0x%08lx:\033[0m  0x%08x", stack + 16, b_mmu_read32(&cpu->mmu, stack + 16));
-    s_info("\033[1;37m0x%08lx:\033[0m  0x%08x", stack + 12, b_mmu_read32(&cpu->mmu, stack + 12));
-    s_info("\033[1;37m0x%08lx:\033[0m  0x%08x", stack + 8, b_mmu_read32(&cpu->mmu, stack + 8));
-    s_info("\033[1;37m0x%08lx:\033[0m  0x%08x", stack + 4, b_mmu_read32(&cpu->mmu, stack + 4));
-    s_info("\033[1;37m0x%08lx:\033[0m  0x%08x\n", stack, b_mmu_read32(&cpu->mmu, stack));
+    s_info("\033[1m0x%08lx:\033[0m  0x%08x", stack + 20, b_mmu_read32(&cpu->mmu, stack + 20));
+    s_info("\033[1m0x%08lx:\033[0m  0x%08x", stack + 16, b_mmu_read32(&cpu->mmu, stack + 16));
+    s_info("\033[1m0x%08lx:\033[0m  0x%08x", stack + 12, b_mmu_read32(&cpu->mmu, stack + 12));
+    s_info("\033[1m0x%08lx:\033[0m  0x%08x", stack + 8, b_mmu_read32(&cpu->mmu, stack + 8));
+    s_info("\033[1m0x%08lx:\033[0m  0x%08x", stack + 4, b_mmu_read32(&cpu->mmu, stack + 4));
+    s_info("\033[1m0x%08lx:\033[0m  0x%08x\n", stack, b_mmu_read32(&cpu->mmu, stack));
+
+    s_info("[CALLTRACE]");
+    callstack_record_t *record;
+    for (size_t i = cpu->e_state.callstacktop; i != 0; i--) {
+        record = &cpu->e_state.callstack[i];
+        s_info("\033[1m0x%08lx \033[1;31m<%s+0x%02x>\033[0m", record->f_val + record->f_rel, record->f_sym, record->f_rel);
+    }
+        record = &cpu->e_state.callstack[0];
+        s_info("\033[1m0x%08lx \033[1;31m<%s+0x%02x>\033[0m", record->f_val + record->f_rel, record->f_sym, record->f_rel);
+
+    xfree(inst_str);
 }
 
 int modrm2sreg(uint8_t modrm)
@@ -313,35 +395,6 @@ int effctvreg(uint8_t modrm)
 }
 
 
-static uint8_t displsz16(uint8_t modrm)
-{
-    uint8_t mod = mod(modrm);
-    uint8_t rm = rm(modrm);
-    uint8_t sz = 0;
-
-    if (mod == 1)
-        sz = 8;
-    else if (mod == 2 || (mod == 0 && rm == 0b110))
-        sz = 16;
-
-    return sz;
-}
-
-static uint8_t displsz32(uint8_t modrm)
-{
-    uint8_t mod = mod(modrm);
-    uint8_t rm = rm(modrm);
-    uint8_t sz = 0;
-
-    if (mod == 1)
-        sz = 8;
-    else if (mod == 2 || (mod == 0 && rm == 0b101))
-        sz = 32;
-
-    return sz;
-}
-
-
 static uint32_t rdmemx(x86CPU *cpu, addr_t effctvaddr, int size)
 {
     ASSERT(cpu != NULL);
@@ -448,7 +501,6 @@ void c_x86_atomic_wrmem32(x86CPU * cpu, addr_t effctvaddr, uint32_t bytes)
 
 //////////////
 
-#define update_eip8(cpu) (cpu)->EIP+=1
 #define set_fetch_err(instr, byte) \
     do {        \
     } while (0)
@@ -456,535 +508,13 @@ void c_x86_atomic_wrmem32(x86CPU * cpu, addr_t effctvaddr, uint32_t bytes)
 // this will fetch the instruction and update the EIP accordingly
 static void fetch(x86CPU *cpu, struct instruction *instr)
 {
-    uint8_t byte;
-    int encoding;
-    struct opcode *table = x86_opcode_table;
-    struct opcode op;
-    struct exec_data data;
-    uint32_t old_eip = cpu->EIP;
-    uint8_t last_prefix = 0;
-
-    data.ext = 0;
-    data.sec = 0;
-    data.opc = 0;
-    data.modrm = 0;
-    data.sib = 0;
-    data.imm1 = 0;
-    data.imm2 = 0;
-    data.oprsz_pfx = 0;
-    data.adrsz_pfx = 0;
-    data.lock = 0;
-    data.repnz = 0;
-    data.rep = 0;
-    data.segovr = 0;
-
-    instr->fail_to_fetch = 0;
-    instr->fail_byte = 0;
-
-    for (size_t isprefix = 1; isprefix != 0;) {
-        byte = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-        if (B_mmu_error(&cpu->mmu))
-            c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-        update_eip8(cpu);
-        if (x86_byteispfx(byte)) {
-
-            if (byte == PFX_OPRSZ)
-                data.oprsz_pfx = 1;
-            else if (byte == PFX_ADDRSZ)
-                data.adrsz_pfx = 1;
-            else if (byte == PFX_LOCK)
-                data.lock = 1;
-            else if (byte == PFX_REPNZ)
-                data.repnz = 1;
-            else if (byte == PFX_REP)
-                data.rep = 1;
-            else
-                data.segovr = byte2segovr(byte);
-
-            last_prefix = byte;
-            byte = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-            if (B_mmu_error(&cpu->mmu))
-                c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-            if (x86_byteispfx(byte))
-                continue;
-
-            update_eip8(cpu);
-        }
-        isprefix = 0;
-    }
-    // handles prefixes
-    // 'two-byte' instructions
-    if (byte == 0x0F) {
-        table = x86_opcode_0f_table;
-
-        byte = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-        if (B_mmu_error(&cpu->mmu))
-            c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-        update_eip8(cpu);
-
-    }
-
-    op = table[byte];
-    data.opc = byte;
-
-    // handle instructions with secondary bytes (see AAM/AAD)
-    if (op.o_sec_table) {
-        byte = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-        if (B_mmu_error(&cpu->mmu))
-            c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-        for (size_t i = 0; i < op.o_sec_tablesz; i++) {
-            if (op.o_sec_table[i].o_opcode == byte) {
-
-                data.sec = byte;
-                op = op.o_sec_table[i];
-                update_eip8(cpu);
-            }
-        }
-    }
-
-    // handle Mod/RM, SIB and opcode extensions
-    if (op.o_use_rm) {
-        data.modrm = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-        if (B_mmu_error(&cpu->mmu))
-            c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-        update_eip8(cpu);
-
-        if (op.o_use_op_extension) {
-            if (op.o_extensions[reg(data.modrm)].o_opcode)
-                op = op.o_extensions[reg(data.modrm)];
-        }
-
-        switch (mod(data.modrm)) {
-            case 0: // MOD 00 RM 100
-            case 1: // MOD 01 RM 100
-            case 2: // MOD 10 RM 100
-                if (rm(data.modrm) == 4) {
-                    data.sib = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-                    if (B_mmu_error(&cpu->mmu))
-                        c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-                    update_eip8(cpu);
-                }
-                break;
-            default:
-                break;
-        }
-    }
-
-    // handle instructions with type <prefix> <primary> [secondary]
-    if (op.o_prefix && last_prefix) {
-        if (table == x86_opcode_table) {
-            if (last_prefix == op.o_prefix->o_opcode)
-                op = *op.o_prefix;
-        } else if (table == x86_opcode_0f_table) {
-            if (last_prefix == op.o_prefix[last_prefix & TABLE_0F_PREFIX_MASK].o_opcode)
-                op = op.o_prefix[last_prefix & TABLE_0F_PREFIX_MASK];
-        }
-
-        if (op.o_sec_table) {
-            byte = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-            if (B_mmu_error(&cpu->mmu))
-                c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-            for (size_t i = 0; i < op.o_sec_tablesz; i++) {
-                if (op.o_sec_table[i].o_opcode == byte) {
-
-                    data.sec = byte;
-                    op = op.o_sec_table[i];
-                    update_eip8(cpu);
-                }
-            }
-        }
-    }
-
-    // select a encoding according to the operand-size
-    if (data.oprsz_pfx)
-        encoding = op.o_encoding16bit;
-    else
-        encoding = op.o_encoding;
-
-    uint8_t dispsz;
-    switch (encoding) {
-        case rm8_imm8:
-        case rm8_xmm2_imm8:
-        case rm32_r32_imm8:
-        case rm32_imm8:
-        case rm32_xmm1_imm8:
-        case rm32_xmm2_imm8:
-        case r32_rm32_imm8:
-        case xmm1_r32m8_imm8:
-        case mm_r32m16_imm8:
-        case mm1_mm2m64_imm8:
-        case rm16_imm8:
-        case rm16_xmm1_imm8:
-        case rm16_r16_imm8:
-        case r16_rm16_imm8:
-        case xmm_r32m16_imm8:
-        case xmm1_xmm2m32_imm8:
-        case xmm1_xmm2m64_imm8:
-        case xmm1_xmm2m128_imm8:
-            // if we have a displacement to add to the effective address
-            // we get the size of the displacement
-            if (data.adrsz_pfx)
-                dispsz = displsz16(data.modrm);
-            else
-                dispsz = displsz32(data.modrm);
-
-            if (dispsz == 8) {
-                data.moffset = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-            } else if (dispsz == 16) {
-                data.moffset = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-                data.moffset |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 8;
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-            } else if (dispsz == 32) {
-                data.moffset = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-                data.moffset |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 8;
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-                data.moffset |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 16;
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-                data.moffset |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 24;
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-            }
-            // FALL THROUGH
-        case imm8:
-        case imm8_AL:
-        case imm8_AX:
-        case imm8_eAX:
-        case AL_imm8:
-        case AX_imm8:
-        case eAX_imm8:
-        case mm_imm8:
-        case mm1_imm8:
-        case r32_mm_imm8:
-        case r32_xmm_imm8:
-        case rela8:
-        case xmm1_imm8:
-            data.imm1 = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-            if (B_mmu_error(&cpu->mmu))
-                c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-            update_eip8(cpu);
-            break;
-        case rm16_imm16:
-        case r16_rm16_imm16:
-            dispsz = displsz16(data.modrm);
-
-            if (dispsz == 8) {
-                data.moffset = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-            } else if (dispsz == 16) {
-                data.moffset = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-                data.moffset |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 8;
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-            }
-            // FALL THROUGH
-        case imm16:
-        case imm16_AX:
-        case AX_imm16:
-        case rela16:
-            data.imm1 = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-            if (B_mmu_error(&cpu->mmu))
-                c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-            update_eip8(cpu);
-            data.imm1 |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 8;
-            if (B_mmu_error(&cpu->mmu))
-                c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-            update_eip8(cpu);
-            break;
-        case rm32_imm32:
-        case r32_rm32_imm32:
-            dispsz = displsz32(data.modrm);
-
-            if (dispsz == 8) {
-                data.moffset = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-            } else if (dispsz == 32) {
-                data.moffset = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-                data.moffset |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 8;
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-                data.moffset |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 16;
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-                data.moffset |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 24;
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-            }
-        // FALL THROUGH
-        case rela16_16:
-        case ptr16_16:
-        case eAX_imm32:
-        case rela32:
-        case imm32:
-        case imm32_eAX:
-            data.imm1 = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-            if (B_mmu_error(&cpu->mmu))
-                c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-            update_eip8(cpu);
-            data.imm1 |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 8;
-            if (B_mmu_error(&cpu->mmu))
-                c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-            update_eip8(cpu);
-            data.imm1 |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 16;
-            if (B_mmu_error(&cpu->mmu))
-                c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-            update_eip8(cpu);
-            data.imm1 |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 24;
-            if (B_mmu_error(&cpu->mmu))
-                c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-            update_eip8(cpu);
-            break;
-        case rela16_32:
-        case ptr16_32:
-            // first 16 bytes
-            data.imm1 = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-            if (B_mmu_error(&cpu->mmu))
-                c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-            update_eip8(cpu);
-            data.imm1 |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 8;
-            if (B_mmu_error(&cpu->mmu))
-                c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-            update_eip8(cpu);
-
-            // last four bytes
-            data.imm2 = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-            if (B_mmu_error(&cpu->mmu))
-                c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-            update_eip8(cpu);
-            data.imm2 |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 8;
-            if (B_mmu_error(&cpu->mmu))
-                c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-            update_eip8(cpu);
-            data.imm2 |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 16;
-            if (B_mmu_error(&cpu->mmu))
-                c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-            update_eip8(cpu);
-            data.imm2 |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 24;
-            if (B_mmu_error(&cpu->mmu))
-                c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-            update_eip8(cpu);
-            break;
-        case imm16_imm8:
-            // fist two bytes
-            data.imm1 = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-            if (B_mmu_error(&cpu->mmu))
-                c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-            update_eip8(cpu);
-            data.imm1 |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 8;
-            if (B_mmu_error(&cpu->mmu))
-                c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-            update_eip8(cpu);
-
-            // last byte
-            data.imm2 = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-            if (B_mmu_error(&cpu->mmu))
-                c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-            update_eip8(cpu);
-            break;
-        case bnd_sib:
-        case sib_bnd:
-            if (!data.sib) {
-                data.sib = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-                update_eip8(cpu);
-            }
-            break;
-        case bnd_rm32:
-        case bnd1m64_bnd2:
-        case bnd1_bnd2m64:
-        case m8:
-        case m16:
-        case m32:
-        case m64:
-        case rm8:
-        case rm8_1:
-        case rm8_CL:
-        case rm8_r8:
-        case mm1_mm2m32:
-        case mm1_mm2m64:
-        case mm_xmm1m64:
-        case mm_xmm1m128:
-        case rm16:
-        case rm16_1:
-        case rm16_CL:
-        case rm16_r16:
-        case rm16_r16_CL:
-        case rm16_sreg:
-        case rm32:
-        case rm32_1:
-        case rm32_CL:
-        case rm32_mm:
-        case rm32_r32:
-        case rm32_r32_CL:
-        case rm32_xmm:
-        case r8_rm8:
-        case m16_16:
-        case m16_32:
-        case m32_r32:
-        case m64_mm:
-        case m64_xmm1:
-        case m128_xmm1:
-        case mm_m64:
-        case mm_rm32:
-        case r16_m16:
-        case r16_rm8:
-        case r16_rm16:
-        case r16_r16m16:
-        case r32m16:
-        case r32_rm32:
-        case r32_rm8:
-        case r32_rm16:
-        case r32_r32m16:
-        case xmm1_xmm2m16:
-        case xmm1_xmm2m32:
-        case xmm1_xmm2m64:
-        case xmm1_xmm2m128:
-        case xmm1m64_xmm2:
-        case xmm2m32_xmm1:
-        case xmm2m64_xmm1:
-        case xmm2m128_xmm1:
-        case xmm_rm32:
-        case xmm1_m32:
-        case xmm1_m64:
-        case xmm1_m128:
-        case xmm1_mm1m64:
-        case xmm1_rm32:
-        case xmm1_r32m32:
-        case sreg_rm16:
-        case r32_xmm1m32:
-        case r32_xmm1m64:
-        case r32_m32:
-        case r16_m16_16:
-        case r32_m16_32:
-            if (data.adrsz_pfx)
-                dispsz = displsz16(data.modrm);
-            else
-                dispsz = displsz32(data.modrm);
-
-            if (dispsz == 8) {
-                data.moffset = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-            } else if (dispsz == 16) {
-                data.moffset = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-                data.moffset |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 8;
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-            } else if (dispsz == 32) {
-                data.moffset = b_mmu_fetch(&cpu->mmu, cpu->EIP);
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-                data.moffset |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 8;
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-                data.moffset |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 16;
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-                data.moffset |= b_mmu_fetch(&cpu->mmu, cpu->EIP) << 24;
-                if (B_mmu_error(&cpu->mmu))
-                    c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
-
-                update_eip8(cpu);
-            }
-            break;
-        case AX_r16:
-        case eAX_r32:
-        case mm_xmm:
-        case mm1_mm2:
-        case r16:
-        case r32:
-        case r32_mm:
-        case r32_xmm:
-        case OP:
-        case xmm_mm:
-        case xmm1_mm:
-        case xmm1_xmm2:
-            break;
-        case no_encoding:
-        default:
-            c_x86_raise_exception(cpu, INT_UD);
-            return;
-    }
-
-    instr->name = op.o_name;
-    instr->handler = op.o_handler;
-    instr->data = data;
-    instr->size = cpu->EIP - old_eip;
+    *instr = x86_decode(&cpu->mmu, cpu->EIP);
+    if (B_mmu_error(&cpu->mmu))
+        c_x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
+
+    if (instr->fail_to_fetch)
+        c_x86_raise_exception(cpu, INT_UD);
+    cpu->EIP += instr->size;
 }
 
 
@@ -1022,7 +552,7 @@ void c_x86_cpu_exec(char *executable)
     xfree(executable);
 
     // actually map the segments
-    b_mmu_mmap_loadable(&cpu->executable, &cpu->mmu);
+    b_mmu_mmap_loadable(&cpu->mmu, &cpu->executable);
     if (B_mmu_error(&cpu->mmu)) {
         c_x86_stopcpu(cpu);
         s_error(1, "%s", B_mmu_errstr(&cpu->mmu));
@@ -1036,10 +566,14 @@ void c_x86_cpu_exec(char *executable)
 
     cpu->EIP = cpu->executable.g_entryp;
 
+    c_x86_add2callstack(cpu, cpu->EIP);
+
     while (1) {
+        cpu->e_state.last_eip = cpu->EIP;
         fetch(cpu, &instr);
 
         cpu->e_state.last_instr = instr;
+        c_x86_updatecallstack(cpu);
 
         c_x86_print_cpustate(cpu);
 

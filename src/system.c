@@ -84,6 +84,57 @@ char *find_executable(const char *name)
     return fullpath;
 }
 
+char *coolstrcat(char *dest, size_t argc, ...)
+{
+    va_list ap;
+
+    va_start(ap, argc);
+    for (size_t i = 0; i < argc; i++)
+        strcat(dest, va_arg(ap, const char *));
+    va_end(ap);
+
+    return dest;
+}
+
+char *int2str(uint32_t n)
+{
+    char *s = xcalloc(11, sizeof(*s));
+    size_t index = 0;
+    uint32_t mask = 0xf0000000;
+    int nibble = 8;
+    _Bool found_bits = 0;   // to not add leading bytes to the string
+
+    s[index++] = '0';
+    s[index++] = 'x';
+
+    if (!n) {
+        s[index++] = '0';
+        return s;
+    }
+
+    while (nibble != 0) {
+
+        if (index > 2)
+            found_bits = 1;
+
+        switch ((n & mask) >> 4*(nibble - 1)) {
+            case 0: (found_bits) ? s[index++] = '0' : (void) 0; break;
+            case 1: s[index++] = '1'; break;
+            case 2: s[index++] = '2'; break; case 3: s[index++] = '3'; break;
+            case 4: s[index++] = '4'; break; case 5: s[index++] = '5'; break;
+            case 6: s[index++] = '6'; break; case 7: s[index++] = '7'; break;
+            case 8: s[index++] = '8'; break; case 9: s[index++] = '9'; break;
+            case 10: s[index++] = 'a'; break; case 11: s[index++] = 'b'; break;
+            case 12: s[index++] = 'c'; break; case 13: s[index++] = 'd'; break;
+            case 14: s[index++] = 'e'; break; case 15: s[index++] = 'f'; break;
+        }
+        nibble --;
+        mask >>= 4;
+    }
+    return s;
+}
+
+
 void s_error(int err, const char *fmt, ...)
 {
     va_list ap;

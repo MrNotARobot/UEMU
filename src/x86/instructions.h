@@ -67,6 +67,7 @@ typedef void (*d_x86_instruction_handler)(void *, struct exec_data);
 struct instruction {
     const char *name;
     d_x86_instruction_handler handler;
+    int encoding;
     struct exec_data data;
     uint8_t fail_to_fetch;
     uint8_t fail_byte;

@@ -34,13 +34,17 @@ typedef uint16_t reg16_t;
 typedef uint32_t reg32_t;
 
 typedef struct {
-    char *f_sym;
+    const char *f_sym;
     addr_t f_val;
+    uint32_t f_rel;   // offset from the beggining of the function
 } callstack_record_t;
 
 struct exec_state {
+    reg32_t last_eip;
     struct instruction last_instr;
     callstack_record_t *callstack;
+    size_t callstacksz;
+    size_t callstacktop;
 };
 
 typedef struct {
@@ -149,6 +153,8 @@ int modrm2sreg(uint8_t);
 int reg8islb(int);
 int reg8to32(int);
 int effctvreg(uint8_t);
+
+void c_x86_add2callstack(x86CPU *, addr_t);
 
 void c_x86_print_cpustate(x86CPU *);
 

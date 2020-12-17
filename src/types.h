@@ -23,6 +23,7 @@
 #define TYPES_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 typedef uint64_t addr_t;
 

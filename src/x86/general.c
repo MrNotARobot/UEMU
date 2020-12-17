@@ -576,6 +576,8 @@ static void x86__mm_abs_call(void *cpu, addr_t absladdr)
 {
     x86__mm_r32_push(cpu, EIP);
 
+    c_x86_add2callstack(cpu, absladdr);
+
     C_x86_wrreg32(cpu, EIP, absladdr);
 }
 

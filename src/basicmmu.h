@@ -31,6 +31,12 @@
 #include "types.h"
 #include "generic-elf.h"
 
+typedef struct {
+    size_t fr_name; // this is a index to the table where the symbol was from
+    addr_t fr_start;
+    addr_t fr_end;
+} func_rangemap_t;
+
 // keep track of in-use pages to catch any invalid memory reads/writes
 typedef struct page_info {
     addr_t p_addr;
@@ -45,7 +51,9 @@ typedef struct {
                         // the physical memory)
     size_t c_memsz;
     page_info_t *c_pages;
+    func_rangemap_t *c_fmap;
     size_t c_npages;
+    size_t c_fmapsz;
     int c_perms;
     int c_inuse;
 } table_record_t;
@@ -60,12 +68,15 @@ typedef struct {
     table_record_t *records;
     size_t max_records;
 
+    func_rangemap_t *fmap_cache;
+    size_t fmap_cachewridx;     // the write index for out function map cache
     struct error_description err;
 } BasicMMU;
 
 
-#define B_mmu_error(b_mmu) (b_mmu)->err.errnum
-#define B_mmu_errstr(b_mmu) (b_mmu)->err.description
+#define B_mmu_error(b_mmu) ((b_mmu)->err.errnum)
+#define B_mmu_errstr(b_mmu) ((b_mmu)->err.description)
+#define B_mmu_clrerror(b_mmu) ((b_mmu)->err.errnum = 0)
 
 
 enum BasicMMUErrors {
@@ -92,9 +103,10 @@ enum BasicMMUStackFlags {
 };
 
 // map the loadable segments from the file detailed by the GenericELF struct
-void b_mmu_mmap_loadable(GenericELF *, BasicMMU *);
+void b_mmu_mmap_loadable(BasicMMU *, GenericELF *g_elf);
 
 uint8_t b_mmu_fetch(BasicMMU *, addr_t);
+const func_rangemap_t *b_mmu_findfunction(BasicMMU *, addr_t);
 
 uint8_t b_mmu_read8(BasicMMU *, addr_t);
 uint16_t b_mmu_read16(BasicMMU *, addr_t);

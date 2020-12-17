@@ -17,6 +17,9 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
+ *
+ * DESCRIPTION:
+ *      this file creates the opcode table that the x86cpu relies on.
  */
 
 #include <stddef.h>

@@ -33,17 +33,20 @@
 #include "basicmmu.h"
 #include "memory.h"
 #include "system.h"
+#include "x86/disassembler.h"
 
 static void B_mmu_set_error(BasicMMU *, int, const char *, ...);
 static table_record_t *lookup(BasicMMU*, addr_t);
 static void *translate_virtaddr(BasicMMU *, addr_t);
 static uint64_t readx(BasicMMU *, addr_t, int);
-
+static void map_fuctions2range(BasicMMU *, GenericELF *);
 
 static int conf_b_mmu_initial_npages = 4;
 static int conf_b_mmu_page_alloc_incr = 2;
 static addr_t conf_b_mmu_top_stack_address = 0xffffa000;
 static size_t conf_b_mmu_stack_size = 4 * 4096;
+static size_t conf_b_mmu_fmap_shortcut_threshold = 200;
+static size_t conf_b_mmu_fmap_cache_size = 20;
 
 
 static void B_mmu_set_error(BasicMMU *b_mmu, int errnum, const char *fmt, ...)
@@ -112,15 +115,19 @@ void b_mmu_init(BasicMMU *b_mmu)
     b_mmu->max_records = conf_b_mmu_initial_npages;
     b_mmu->records = xcalloc(b_mmu->max_records, sizeof(*b_mmu->records));
 
+    b_mmu->fmap_cache = xcalloc(conf_b_mmu_fmap_cache_size, sizeof(func_rangemap_t));
+    b_mmu->fmap_cachewridx = 0;
     B_mmu_set_error(b_mmu, 0, NULL);
 }
 
 void b_mmu_release_recs(BasicMMU *b_mmu)
 {
+    ASSERT(b_mmu != NULL);
     table_record_t *record;
 
     for (size_t i = 0; i < b_mmu->max_records; i++) {
         record = &b_mmu->records[i];
+        xfree(record->c_fmap);
         if (record->c_inuse) {
             xfree(record->c_pages);
             if (munmap(record->c_buffer, record->c_memsz) == -1)
@@ -128,6 +135,7 @@ void b_mmu_release_recs(BasicMMU *b_mmu)
         }
     }
 
+    xfree(b_mmu->fmap_cache);
     xfree(b_mmu->records);
 }
 
@@ -314,12 +322,15 @@ void b_mmu_munmap(BasicMMU *b_mmu, addr_t addr, size_t length)
         xfree(record->c_pages);
         memset(record, 0, sizeof(*record));
     }
+
+    record->c_fmap = NULL;
+    record->c_fmapsz = 0;
 }
 
 /*
  * Setup the basic execution environment by mmap'ing the segments to memory.
  */
-void b_mmu_mmap_loadable(GenericELF *g_elf, BasicMMU *b_mmu)
+void b_mmu_mmap_loadable(BasicMMU *b_mmu, GenericELF *g_elf)
 {
     ASSERT(b_mmu != 0);
     struct loadable_segment segment;
@@ -346,6 +357,8 @@ void b_mmu_mmap_loadable(GenericELF *g_elf, BasicMMU *b_mmu)
         if (B_mmu_error(b_mmu))
             return;
     }
+
+    map_fuctions2range(b_mmu, g_elf);
 }
 
 addr_t b_mmu_create_stack(BasicMMU *b_mmu, int flags)
@@ -364,6 +377,153 @@ addr_t b_mmu_create_stack(BasicMMU *b_mmu, int flags)
         return 0;
 
     return stack;
+}
+
+static void map_fuctions2range(BasicMMU *b_mmu, GenericELF *g_elf)
+{
+    ASSERT(b_mmu != NULL);
+    ELF_Sym sym;
+    table_record_t *record;
+    size_t recidx;
+
+    for (size_t i = 1; i < G_elf_symtabsz(g_elf); i++) {
+        sym = g_elf_getsym(g_elf, i);
+        record = lookup(b_mmu, sym.s_value);
+
+        if (record) {
+            if (!record->c_fmap) {
+                record->c_fmap = xcalloc(1, sizeof(func_rangemap_t));
+                record->c_fmapsz = 1;
+                record->c_fmap[0].fr_name = 0;   // points to NULL
+                record->c_fmap[0].fr_start = 0;
+                record->c_fmap[0].fr_end = 0;
+            }
+
+            recidx = ++record->c_fmapsz;
+            record->c_fmap = xreallocarray(record->c_fmap, recidx, sizeof(func_rangemap_t));
+            record->c_fmap[recidx-1].fr_name = i;
+            record->c_fmap[recidx-1].fr_start = sym.s_value;
+            record->c_fmap[recidx-1].fr_end = 0;
+            // defer finding the end address to when we need
+        }
+    }
+}
+
+const func_rangemap_t *b_mmu_findfunction(BasicMMU *b_mmu, addr_t virtaddr)
+{
+    ASSERT(b_mmu != NULL);
+    table_record_t *record = lookup(b_mmu, virtaddr);
+    addr_t closest = 0;
+    func_rangemap_t *closest_func = NULL;
+    struct instruction last_instr;
+
+    if (record) {
+        if (!record->c_fmap)
+            return NULL;
+
+        // check our cache for recently entered functions
+        // is guaranteed that the cache will always have this size
+        for (size_t i = 0; i < conf_b_mmu_fmap_cache_size; i++) {
+            if (virtaddr >= b_mmu->fmap_cache[i].fr_start && virtaddr <= b_mmu->fmap_cache[i].fr_end)
+                return &b_mmu->fmap_cache[i];
+        }
+
+        // if the end address was already calculate then we
+        // can simply compare if the addres is within bounds
+        for (size_t i = 1; i < record->c_fmapsz; i++) {
+            if (record->c_fmap[i].fr_start == virtaddr) {
+                // save the end of the function
+                for (size_t k = 1; k < record->c_fmapsz; k++) {
+                    if (!closest && record->c_fmap[k].fr_start > record->c_fmap[i].fr_start) {
+                        closest = record->c_fmap[k].fr_start;
+                        continue;
+                    }
+
+                    if (record->c_fmap[k].fr_start > record->c_fmap[i].fr_start &&
+                            record->c_fmap[k].fr_start < closest)
+                        closest = record->c_fmap[k].fr_start;
+                }
+
+                // if the function is too long then we want to avoid decoding the entire thing
+                // so check if the last instruction is a RET, if it is then that is our end
+                // may save us a lot of execution time
+                if ((closest - record->c_fmap[i].fr_start) >
+                        conf_b_mmu_fmap_shortcut_threshold) {
+                    last_instr = x86_decode(b_mmu, closest-1);
+
+                    if (!last_instr.fail_to_fetch) {
+                        if (strcmp(last_instr.name, "RET") == 0) {
+                            record->c_fmap[i].fr_end = closest - 1;
+
+                            closest_func = &record->c_fmap[i];
+                            goto update_cache_and_exit;
+                        }
+                    }
+                    // its an invalid opcode... it happens
+                }
+
+                // decode the entire function and stop at the last instruction
+                record->c_fmap[i].fr_end = x86_decodeuntil(b_mmu, record->c_fmap[i].fr_start, closest);
+                closest_func = &record->c_fmap[i];
+                goto update_cache_and_exit;
+            }
+
+            // its a function we have seen before but wasn't in our cache
+            if (record->c_fmap[i].fr_end) {
+
+                if (virtaddr >= record->c_fmap[i].fr_start && virtaddr <= record->c_fmap[i].fr_end) {
+                    closest_func = &record->c_fmap[i];
+                    goto update_cache_and_exit;
+                }
+            }
+        }
+        // we didn't find it before but don't panic yet
+        // find the closest function to our address
+        for (size_t i = 1; i < record->c_fmapsz; i++) {
+            if (record->c_fmap[i].fr_start > closest_func->fr_start &&
+                    record->c_fmap[i].fr_start < virtaddr)
+                closest_func = &record->c_fmap[i];
+        }
+
+        // now we find the end of the function closest to us and check
+        // to see if we are at its boundaries, if not... Oops
+        for (size_t i = 1; i < record->c_fmapsz; i++) {
+            if (!closest && record->c_fmap[i].fr_start > closest_func->fr_start) {
+                closest = record->c_fmap[i].fr_start;
+                continue;
+            }
+
+            if (record->c_fmap[i].fr_start > closest_func->fr_start &&
+                    record->c_fmap[i].fr_start < closest)
+                closest = record->c_fmap[i].fr_start;
+        }
+
+        // time-saver in big functions
+        if ((closest - closest_func->fr_start) > conf_b_mmu_fmap_shortcut_threshold) {
+            last_instr = x86_decode(b_mmu, closest-1);
+
+            if (!last_instr.fail_to_fetch) {
+                if (strcmp(last_instr.name, "RET") == 0) {
+                    closest_func->fr_end = closest - 1;
+                    goto update_cache_and_exit;
+                }
+            }
+            // its an invalid opcode... it happens
+        }
+        // stop at the last instruction of the function
+        closest_func->fr_end = x86_decodeuntil(b_mmu, closest_func->fr_start, closest);
+
+        if (virtaddr > closest_func->fr_start && virtaddr < closest_func->fr_end)
+            goto update_cache_and_exit;
+        // if we reached here means the we fail somehow
+    }
+
+update_cache_and_exit:
+    b_mmu->fmap_cache[b_mmu->fmap_cachewridx++] = *closest_func;
+    if (b_mmu->fmap_cachewridx >= conf_b_mmu_fmap_cache_size)
+        b_mmu->fmap_cachewridx = 0;
+
+    return closest_func;
 }
 
 // Read/Write functions
@@ -458,7 +618,6 @@ void writex(BasicMMU *b_mmu, uint64_t bytes, addr_t virtaddr, int size)
     ASSERT(b_mmu != NULL);
     void *buffer = NULL;
 
-    s_info("virtaddr %08lx", virtaddr);
     buffer = translate_virtaddr(b_mmu, virtaddr);
     if (!buffer) {
         B_mmu_set_error(b_mmu, ESEGFAULT, "invalid memory read at %ld", virtaddr);
@@ -469,7 +628,6 @@ void writex(BasicMMU *b_mmu, uint64_t bytes, addr_t virtaddr, int size)
         B_mmu_set_error(b_mmu, EPROT, "attempted write at non-writable page at 0x%lx", virtaddr);
         return;
     }
-
 
     switch (size) {
         case 8:
