@@ -25,13 +25,21 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define MODRM_RM_BIT_MASK 0b00000111
-#define MODRM_REG_BIT_MASK 0b00111000
-#define MODRM_MOD_BIT_MASK 0b11000000
+#define MODRM_RM_BITMASK 0b00000111
+#define MODRM_REG_BITMASK 0b00111000
+#define MODRM_MOD_BITMASK 0b11000000
 
-#define rm(modrm)  (    ((modrm) & MODRM_RM_BIT_MASK)           )
-#define reg(modrm) (    ((modrm) & MODRM_REG_BIT_MASK) >> 3     )
-#define mod(modrm) (    ((modrm) & MODRM_MOD_BIT_MASK) >> 6     )
+#define rm(modrm)  (    ((modrm) & MODRM_RM_BITMASK)           )
+#define reg(modrm) (    ((modrm) & MODRM_REG_BITMASK) >> 3     )
+#define mod(modrm) (    ((modrm) & MODRM_MOD_BITMASK) >> 6     )
+
+#define SIB_BASE_BITMASK 0b00000111
+#define SIB_INDEX_BITMASK 0b00111000
+#define SIB_SS_BITMASK 0b11000000
+
+#define sibbase(sib) (  (sib) & SIB_BASE_BITMASK  )
+#define sibindex(sib) (  ((sib) & SIB_INDEX_BITMASK) >> 3  )
+#define sibss(sib) (  ((sib) & SIB_SS_BITMASK) >> 6  )
 
 #define TABLE_0F_PREFIX_MASK 5
 
@@ -42,6 +50,7 @@ struct exec_data {
     uint8_t modrm;
     uint8_t sib;
 
+    uint32_t moffset;
     uint32_t imm1;
     uint32_t imm2;
 
@@ -681,7 +690,7 @@ void x86_punpcklbw(void *, struct exec_data);
 void x86_punpcklwd(void *, struct exec_data);
 void x86_punpckldq(void *, struct exec_data);
 void x86_punpcklqdq(void *, struct exec_data);
-void x86_push(void *, struct exec_data);
+void x86_mm_push(void *, struct exec_data);
 void x86_pusha(void *, struct exec_data);
 void x86_pushf(void *, struct exec_data);
 void x86_pxor(void *, struct exec_data);

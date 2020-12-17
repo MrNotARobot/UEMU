@@ -340,7 +340,7 @@ void x86_init_opcode_table(void)
     register_op(0x03, "ADD", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_add);
     register_op(0x04, "ADD", NONE, AL_imm8, AL_imm8, NO_RM, INSTR, x86_add);
     register_op(0x05, "ADD", NONE, eAX_imm32, AX_imm16, NO_RM, INSTR, x86_add);
-    register_op(0x06, "PUSH", NONE, OP, OP, NO_RM, INSTR, x86_push);
+    register_op(0x06, "PUSH", NONE, OP, OP, NO_RM, INSTR, x86_mm_push);
     register_op(0x07, "POP", NONE, OP, OP, NO_RM, INSTR, x86_mm_pop);
     register_op(0x08, "OR", NONE, rm8_r8, rm8_r8, NO_RM, INSTR, x86_or);
     register_op(0x09, "OR", NONE, rm32_r32, rm16_r16, NO_RM, INSTR, x86_or);
@@ -348,7 +348,7 @@ void x86_init_opcode_table(void)
     register_op(0x0B, "OR", NONE, r32_rm32, r16_rm16, NO_RM, INSTR, x86_or);
     register_op(0x0C, "OR", NONE, AL_imm8, AL_imm8, NO_RM, INSTR, x86_or);
     register_op(0x0D, "OR", NONE, eAX_imm32, AX_imm16, NO_RM, INSTR, x86_or);
-    register_op(0x0E, "PUSH", NONE, OP, OP, NO_RM, INSTR, x86_push);
+    register_op(0x0E, "PUSH", NONE, OP, OP, NO_RM, INSTR, x86_mm_push);
     register_op(0x0F, NULL, NONE, no_encoding, no_encoding, NO_RM, PREFIX, NULL);
     register_op(0x10, "ADC", NONE, rm8_r8, rm8_r8, USE_RM, INSTR, x86_adc);
     register_op(0x11, "ADC", NONE, rm32_r32, rm16_r16, USE_RM, INSTR, x86_adc);
@@ -356,7 +356,7 @@ void x86_init_opcode_table(void)
     register_op(0x13, "ADC", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_adc);
     register_op(0x14, "ADC", NONE, AL_imm8, AL_imm8, NO_RM, INSTR, x86_adc);
     register_op(0x15, "ADC", NONE, eAX_imm32, AX_imm16, NO_RM, INSTR, x86_adc);
-    register_op(0x16, "PUSH", NONE, OP, OP, NO_RM, INSTR, x86_push);
+    register_op(0x16, "PUSH", NONE, OP, OP, NO_RM, INSTR, x86_mm_push);
     register_op(0x17, "POP", NONE, OP, OP, NO_RM, INSTR, x86_mm_pop);
     register_op(0x18, "SBB", NONE, rm8_r8, rm8_r8, USE_RM, INSTR, x86_sbb);
     register_op(0x19, "SBB", NONE, rm32_r32, rm16_r16, USE_RM, INSTR, x86_sbb);
@@ -364,7 +364,7 @@ void x86_init_opcode_table(void)
     register_op(0x1B, "SBB", NONE, r32_rm32, r32_rm32, USE_RM, INSTR, x86_sbb);
     register_op(0x1C, "SBB", NONE, AL_imm8, AL_imm8, NO_RM, INSTR, x86_sbb);
     register_op(0x1D, "SBB", NONE, eAX_imm32, AX_imm16, NO_RM, INSTR, x86_sbb);
-    register_op(0x1E, "PUSH", NONE, OP, OP, NO_RM, INSTR, x86_push);
+    register_op(0x1E, "PUSH", NONE, OP, OP, NO_RM, INSTR, x86_mm_push);
     register_op(0x1F, "POP", NONE, OP, OP, NO_RM, INSTR, x86_mm_pop);
     register_op(0x20, "AND", NONE, rm8_r8, rm8_r8, USE_RM, INSTR, x86_mm_and);
     register_op(0x21, "AND", NONE, rm32_r32, rm16_r16, USE_RM, INSTR, x86_mm_and);
@@ -404,7 +404,7 @@ void x86_init_opcode_table(void)
         register_op(0x48 + i, "DEC", NONE, OP, OP, NO_RM, INSTR, x86_dec);
 
     for (size_t i = 0; i < 8; i++)
-        register_op(0x50 + i, "PUSH", NONE, r32, r16, NO_RM, INSTR, x86_push);
+        register_op(0x50 + i, "PUSH", NONE, r32, r16, NO_RM, INSTR, x86_mm_push);
     for (size_t i = 0; i < 8; i++)
         register_op(0x58 + i, "POP", NONE, r32, r16, NO_RM, INSTR, x86_mm_pop);
     register_op(0x60, "PUSHA", NONE, OP, OP, NO_RM, INSTR, x86_pusha);
@@ -414,9 +414,9 @@ void x86_init_opcode_table(void)
 
     register_op(0x66, NULL,  NONE, no_encoding, no_encoding, NO_RM, PREFIX, NULL);
 
-    register_op(0x68, "PUSH", NONE, imm32, imm16, NO_RM, INSTR, x86_push);
+    register_op(0x68, "PUSH", NONE, imm32, imm16, NO_RM, INSTR, x86_mm_push);
     register_op(0x69, "IMUL",  NONE, r32_rm32_imm32, r16_rm16_imm16, USE_RM, INSTR, x86_imul);
-    register_op(0x6A, "PUSH", NONE, imm8, imm8, NO_RM, INSTR, x86_push);
+    register_op(0x6A, "PUSH", NONE, imm8, imm8, NO_RM, INSTR, x86_mm_push);
     register_op(0x6B, "IMUL",  NONE, r32_rm32_imm8, r16_rm16_imm8, USE_RM, INSTR, x86_imul);
     register_op(0x6C, "INS",  NONE, OP, OP, NO_RM, INSTR, x86_ins);
     register_op(0x6D, "INS",  NONE, OP, OP, NO_RM, INSTR, x86_ins);
@@ -829,7 +829,7 @@ void x86_init_opcode_table(void)
     register_op_ext(0xFF, 3, "CALL", NONE, m16_32, m16_16, USE_RM, INSTR, x86_mm_call);
     register_op_ext(0xFF, 4, "JMP", NONE, rm32, rm16, USE_RM, INSTR, x86_jmp);
     register_op_ext(0xFF, 5, "JMP", NONE, rm32, rm16, USE_RM, INSTR, x86_jmp);
-    register_op_ext(0xFF, 6, "PUSH", NONE, rm32, rm16, USE_RM, INSTR, x86_push);
+    register_op_ext(0xFF, 6, "PUSH", NONE, rm32, rm16, USE_RM, INSTR, x86_mm_push);
 
 
     // 0f two-byte instructions
@@ -1212,14 +1212,14 @@ void x86_init_opcode_table(void)
     register_0f_op(0x9D, "SETGE", NONE, rm8, rm8, USE_RM, INSTR, x86_setcc);
     register_0f_op(0x9E, "SETLE", NONE, rm8, rm8, USE_RM, INSTR, x86_setcc);
     register_0f_op(0x9F, "SETG", NONE, rm8, rm8, USE_RM, INSTR, x86_setcc);
-    register_0f_op(0xA0, "PUSH", NONE, OP, OP, NO_RM, INSTR, x86_push);
+    register_0f_op(0xA0, "PUSH", NONE, OP, OP, NO_RM, INSTR, x86_mm_push);
     register_0f_op(0xA1, "POP", NONE, OP, OP, NO_RM, INSTR, x86_mm_pop);
     register_0f_op(0xA2, "CPUID", NONE, OP, OP, NO_RM, INSTR, x86_cpuid);
     register_0f_op(0xA3, "BT", NONE, rm32_r32, rm16_r16, USE_RM, INSTR, x86_bt);
     register_0f_op(0xA4, "SHLD", NONE, rm32_r32_imm8, rm16_r16_imm8, USE_RM, INSTR, x86_shld);
     register_0f_op(0xA5, "SHLD", NONE, rm32_r32_CL, rm16_r16_CL, USE_RM, INSTR, x86_shld);
 
-    register_0f_op(0xA8, "PUSH", NONE, OP, OP, NO_RM, INSTR, x86_push);
+    register_0f_op(0xA8, "PUSH", NONE, OP, OP, NO_RM, INSTR, x86_mm_push);
     register_0f_op(0xA9, "POP", NONE, OP, OP, NO_RM, INSTR, x86_mm_pop);
     register_0f_op(0xAA, "RSM", NONE, OP, OP, NO_RM, INSTR, x86_rsm);
     register_0f_op(0xAB, "BTS", NONE, rm32_r32, rm16_r16, USE_RM, INSTR, x86_bts);
