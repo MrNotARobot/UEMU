@@ -118,4 +118,10 @@ void b_mmu_write16(BasicMMU *, uint16_t, addr_t);
 void b_mmu_write32(BasicMMU *, uint32_t, addr_t);
 void b_mmu_write64(BasicMMU *, uint64_t, addr_t);
 
+// returns a read-only ptr
+const uint8_t *b_mmu_getptr(BasicMMU *, addr_t);
+
+_Bool b_mmu_isdataptr(BasicMMU *, addr_t);
+_Bool b_mmu_iscodeptr(BasicMMU *, addr_t);
+
 #endif /* BASICMMU_H */

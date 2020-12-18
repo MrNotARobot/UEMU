@@ -669,3 +669,37 @@ void b_mmu_write64(BasicMMU *b_mmu, uint64_t byte, addr_t virtaddr)
 {
     writex(b_mmu, byte, virtaddr, 64);
 }
+
+const uint8_t *b_mmu_getptr(BasicMMU *b_mmu, addr_t virtaddr)
+{
+    ASSERT(b_mmu != NULL);
+    return (const uint8_t *)translate_virtaddr(b_mmu, virtaddr, 0);
+}
+
+_Bool b_mmu_isdataptr(BasicMMU *b_mmu, addr_t virtaddr)
+{
+    ASSERT(b_mmu != NULL);
+    table_record_t *record = lookup(b_mmu, virtaddr);
+
+    if (!record)
+        return 0;
+
+
+    if (record->c_perms & PAGEEXEC || !(record->c_perms & PAGEREAD))
+        return 0;
+
+    return 1;
+}
+
+_Bool b_mmu_iscodeptr(BasicMMU *b_mmu, addr_t virtaddr)
+{
+    table_record_t *record = lookup(b_mmu, virtaddr);
+
+    if (!record)
+        return 0;
+
+    if (record->c_perms & PAGEEXEC)
+        return 1;
+
+    return 0;
+}
