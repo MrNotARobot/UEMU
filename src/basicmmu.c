@@ -37,7 +37,7 @@
 
 static void B_mmu_set_error(BasicMMU *, int, const char *, ...);
 static table_record_t *lookup(BasicMMU*, addr_t);
-static void *translate_virtaddr(BasicMMU *, addr_t);
+static void *translate_virtaddr(BasicMMU *, addr_t, uint8_t);
 static uint64_t readx(BasicMMU *, addr_t, int);
 static void map_fuctions2range(BasicMMU *, GenericELF *);
 
@@ -75,6 +75,7 @@ static table_record_t *lookup(BasicMMU *b_mmu, addr_t virtaddr)
 
         if (virtaddr >= record->c_virtaddr && virtaddr < record->c_virtaddr_end)
             break;
+        record = NULL;
     }
 
     return record;
@@ -84,15 +85,19 @@ static table_record_t *lookup(BasicMMU *b_mmu, addr_t virtaddr)
 /*
  * translates the virtaddr to an actual address in memory
  */
-static void *translate_virtaddr(BasicMMU *b_mmu, addr_t virtaddr)
+static void *translate_virtaddr(BasicMMU *b_mmu, addr_t virtaddr, uint8_t size)
 {
     table_record_t *record = lookup(b_mmu, virtaddr);
     void *buffer = NULL;
     addr_t offset;
 
     if (record) {
-        offset = (~record->c_virtaddr) & virtaddr;
+        offset = virtaddr - record->c_virtaddr;
         buffer = record->c_buffer + offset;
+
+
+        if (record->c_pages[record->c_npages - 1].p_end < (addr_t)buffer + size)
+            return NULL;
 
         // check if page are in-use. if not then its a invalid address
         for (size_t k = 0; k < record->c_npages; k++) {
@@ -221,9 +226,9 @@ addr_t b_mmu_mmap(BasicMMU *b_mmu, addr_t virtaddr, size_t memsz, int prot, int 
     if (prot & PROT_READ)
         perms |= PAGEREAD;
     if (prot & PROT_WRITE)
-        perms |= PAGEWRITE;
+        perms |= PAGEWRITE | PAGEREAD;
     if (prot & PROT_EXEC)
-        perms |= PAGEEXEC;
+        perms |= PAGEEXEC | PAGEREAD;
 
     // search for a unused record
     for (size_t i = 0; i < b_mmu->max_records; i++) {
@@ -258,9 +263,9 @@ addr_t b_mmu_mmap(BasicMMU *b_mmu, addr_t virtaddr, size_t memsz, int prot, int 
     record->c_pages = xcalloc(record->c_npages, sizeof(page_info_t));
     for (size_t i = 0, k = 0; i < memsz; i += pagesize, k++) {
         record->c_pages[k].p_addr = (addr_t) buffer + i;
-        record->c_pages[k].p_addr = (addr_t) buffer + i + pagesize;
+        record->c_pages[k].p_end = (addr_t) buffer + i + pagesize;
         record->c_pages[k].p_inuse = 1;
-    }
+   }
 
     return virtaddr;
 }
@@ -376,7 +381,7 @@ addr_t b_mmu_create_stack(BasicMMU *b_mmu, int flags)
     if (B_mmu_error(b_mmu))
         return 0;
 
-    return stack;
+    return (stack + conf_b_mmu_stack_size - 4) & 0xfffffff0;
 }
 
 static void map_fuctions2range(BasicMMU *b_mmu, GenericELF *g_elf)
@@ -533,7 +538,7 @@ uint8_t b_mmu_fetch(BasicMMU *b_mmu, addr_t virtaddr)
     ASSERT(b_mmu != NULL);
     void *buffer;
 
-    buffer = translate_virtaddr(b_mmu, virtaddr);
+    buffer = translate_virtaddr(b_mmu, virtaddr, 8);
     if (!buffer) {
         B_mmu_set_error(b_mmu, ESEGFAULT, "invalid memory read at 0x%lx", virtaddr);
         return 0;
@@ -560,7 +565,7 @@ uint64_t readx(BasicMMU *b_mmu, addr_t virtaddr, int size)
     void *buffer;
     u_int64_t bytes = 0;
 
-    buffer = translate_virtaddr(b_mmu, virtaddr);
+    buffer = translate_virtaddr(b_mmu, virtaddr, size);
     if (!buffer) {
         B_mmu_set_error(b_mmu, ESEGFAULT, "invalid memory read at 0x%lx", virtaddr);
         return 0;
@@ -570,7 +575,6 @@ uint64_t readx(BasicMMU *b_mmu, addr_t virtaddr, int size)
         B_mmu_set_error(b_mmu, EPROT, "attempted read at non-readable page at 0x%lx", virtaddr);
         return 0;
     }
-
 
     switch (size) {
         case 8:
@@ -612,15 +616,14 @@ uint64_t b_mmu_read64(BasicMMU *b_mmu, addr_t virtaddr)
     return  readx(b_mmu, virtaddr, 64);
 }
 
-
 void writex(BasicMMU *b_mmu, uint64_t bytes, addr_t virtaddr, int size)
 {
     ASSERT(b_mmu != NULL);
     void *buffer = NULL;
 
-    buffer = translate_virtaddr(b_mmu, virtaddr);
+    buffer = translate_virtaddr(b_mmu, virtaddr, size);
     if (!buffer) {
-        B_mmu_set_error(b_mmu, ESEGFAULT, "invalid memory read at %ld", virtaddr);
+        B_mmu_set_error(b_mmu, ESEGFAULT, "invalid memory read at 0x%lx", virtaddr);
         return;
     }
 
