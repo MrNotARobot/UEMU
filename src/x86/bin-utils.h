@@ -28,9 +28,9 @@
 #define lb(bytes) (     (bytes) & 0x000000ff     )  // low 8 bits
 #define l16(bytes) (     (bytes) & 0x0000ffff     )  // low 16 bits
 #define h16(bytes) (     (bytes) & 0xffff0000 >> 16  )  // low 16 bits
-#define signxtnd8(bytes) (   (bytes & 0x000000ff) | (bytes & 0x00000080) ? 0xffffff00 : 0  )     // sign extend to 32 bits
-#define signxtnd8to16(bytes) (   (bytes & 0x00ff) | (bytes & 0x0080) ? 0xff00 : 0  )     // sign extend to 32 bits
-#define signxtnd16(bytes) (   (bytes & 0x0000ffff) | (bytes & 0x00008000) ? 0xffffff00 : 0  )     // sign extend to 32 bits
+#define signxtnd8(bytes) (  bytes |   ((bytes & 0x000000ff) | (bytes & 0x00000080) ? 0xffffff00 : 0)  )     // sign extend to 32 bits
+#define signxtnd8to16(bytes) (  bytes |((bytes & 0x00ff) | (bytes & 0x0080) ? 0xff00 : 0)  )     // sign extend to 32 bits
+#define signxtnd16(bytes) (  bytes | ((bytes & 0x0000ffff) | (bytes & 0x00008000) ? 0xffffff00 : 0)  )     // sign extend to 32 bits
 #define zeroxtnd8to16(bytes) (   (bytes & 0x00ff)  )     // zero-extend to 16 bits
 #define zeroxtnd16(bytes) (    bytes & 0x0000ffff     )
 #define zeroxtnd8(bytes) (    bytes & 0x000000ff     )
