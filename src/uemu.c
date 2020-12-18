@@ -26,7 +26,7 @@
 #include "x86/cpu.h"
 #include "system.h"
 
-int main(int argc, char **argv)
+int main(int argc, char **argv, char **envp)
 {
     char *executable, *program_name;
 
@@ -43,7 +43,7 @@ int main(int argc, char **argv)
         executable = find_executable(program_name);
     }
 
-    c_x86_cpu_exec(executable);
+    x86_cpu_exec(executable, argc, argv, envp);
 
     ASSERT_NOTREACHED();
 }

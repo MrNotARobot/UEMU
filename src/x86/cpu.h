@@ -25,27 +25,13 @@
 #ifndef CPU_H
 #define CPU_H
 
-#include "instructions.h"
 #include <stdint.h>
 
+#include "instructions.h"
+#include "cpustat.h"
 #include "../basicmmu.h"
-
-typedef uint16_t reg16_t;
-typedef uint32_t reg32_t;
-
-typedef struct {
-    const char *f_sym;
-    addr_t f_val;
-    uint32_t f_rel;   // offset from the beggining of the function
-} callstack_record_t;
-
-struct exec_state {
-    reg32_t last_eip;
-    struct instruction last_instr;
-    callstack_record_t *callstack;
-    size_t callstacksz;
-    size_t callstacktop;
-};
+#include "../types.h"
+#include "x86-utils.h"
 
 typedef struct {
     BasicMMU mmu;
@@ -94,122 +80,92 @@ typedef struct {
         reg32_t f_CF : 1;
     } eflags;
 
-    struct exec_state e_state;
+    cpu_stat_t cpustat;
 
-    reg32_t *reg_table[9];
-    struct EFlags *eflags_ptr;
-    reg16_t *sreg_table[6];
+    addr_t environ_;
+    addr_t argv_;
+    int  argc_;
+
+    reg32_t *reg_table_[9];
+    struct EFlags *eflags_ptr_;
+    reg16_t *sreg_table_[6];
 } x86CPU;
+    // member access macros
+#define x86_cpustat(cpu) (&((x86CPU *)(cpu))->cpustat)
+#define x86_mmu(cpu) (&((x86CPU *)(cpu))->mmu)
+#define x86_elf(cpu) (&((x86CPU *)(cpu))->executable)
 
 enum x86ExceptionsInterrupts {
-    INT_UD,     // invalid instruction
-    INT_PF,     // Page Fault
-};
+        INT_UD,     // invalid instruction
+        INT_PF,     // Page Fault
+    };
 
-enum x86Registers {
-    EAX = 0,
-    AX = EAX,
-    ECX = 1,
-    CX = ECX,
-    EDX = 2,
-    DX = EDX,
-    EBX = 3,
-    BX = EBX,
-    ESP = 4,
-    SP = ESP,
-    EBP = 5,
-    BP = EBP,
-    ESI = 6,
-    SI = ESI,
-    EDI = 7,
-    DI = EDI,
-    EIP = 8,
-    AL, AH,
-    CL, CH,
-    DL, DH,
-    BL, BH,
-};
+    void x86_startcpu(x86CPU *);
+    void x86_stopcpu(x86CPU *);
 
-enum x86SegmentRegisters {
-    CS,
-    SS,
-    DS,
-    ES,
-    FS,
-    GS
-};
+    // the main loop
+    void x86_cpu_exec(char *, int argc, char **, char **);
 
+    void x86_raise_exception(x86CPU *, int);
+    void x86_raise_exception_d(x86CPU *, int, addr_t, const char *);
 
-void c_x86_startcpu(x86CPU *);
-void c_x86_stopcpu(x86CPU *);
+    // don't use the MMU interface direcly for reading/writing (USE THESE)
+    uint8_t x86_rdmem8(x86CPU *, addr_t);
+    uint16_t x86_rdmem16(x86CPU *, addr_t);
+    uint32_t x86_rdmem32(x86CPU *, addr_t);
 
-// the main loop
-void c_x86_cpu_exec(char *);
+    void x86_wrmem8(x86CPU *, addr_t, uint8_t);
+    void x86_wrmem16(x86CPU *, addr_t, uint16_t);
+    void x86_wrmem32(x86CPU *, addr_t, uint32_t);
 
-void c_x86_raise_exception(x86CPU *, int);
-void c_x86_raise_exception_d(x86CPU *, int, addr_t, const char *);
+    uint8_t x86_atomic_rdmem8(x86CPU *, addr_t);
+    uint16_t x86_atomic_rdmem16(x86CPU *, addr_t);
+    uint32_t x86_atomic_rdmem32(x86CPU *, addr_t);
 
-int modrm2sreg(uint8_t);
-int reg8islb(int);
-int reg8to32(int);
-int effctvreg(uint8_t);
+    void x86_atomic_wrmem8(x86CPU *, addr_t, uint8_t);
+    void x86_atomic_wrmem16(x86CPU *, addr_t, uint16_t);
+    void x86_atomic_wrmem32(x86CPU *, addr_t, uint32_t);
 
-void c_x86_add2callstack(x86CPU *, addr_t);
+    // write a sequence of bytes
+    void x86_wrseq(x86CPU *, addr_t, const uint8_t *, size_t);
+    // read a sequence of bytes into the buffer
+    void x86_rdseq(x86CPU *, addr_t, uint8_t *, size_t);
+    // same as above but will stop if it reaches the stop byte
+    void x86_rdseq2(x86CPU *, addr_t, uint8_t *, size_t, uint8_t);
 
-void c_x86_print_cpustate(x86CPU *);
+    // I like this function-like way of accessing the registers
+    // read the 8 low/high bits
+#define x86_rdreg8(cpu, reg) reg8_islsb(reg) ? \
+        (  *(((x86CPU *)(cpu))->reg_table_[reg8to32(reg)]) & 0x000000ff  ) : \
+        (  *(((x86CPU *)(cpu))->reg_table_[reg8to32(reg)]) & 0x0000ff00  )
+    // read the 16-bit register from a 32-bit register (i.e. eAX[ah])
+#define x86_rdreg16(cpu, reg) (  *(((x86CPU *)(cpu))->reg_table_[reg]) & 0x0000ffff  )
+    // read the register
+#define x86_rdreg32(cpu, reg) (  *(((x86CPU *)(cpu))->reg_table_[reg])  )
 
-addr_t c_x86_effctvaddr16(x86CPU *, uint8_t, uint32_t);
-addr_t c_x86_effctvaddr32(x86CPU *, uint8_t, uint8_t, uint32_t);
+#define x86_rdsreg(cpu, reg) *(    ((x86CPU *)(cpu))->sreg_table_[reg]    )
 
-// don't use the MMU interface direcly for reading/writing (USE THESE)
-uint8_t c_x86_rdmem8(x86CPU *, addr_t);
-uint16_t c_x86_rdmem16(x86CPU *, addr_t);
-uint32_t c_x86_rdmem32(x86CPU *, addr_t);
+    // write to the 8 low bits of a register
+#define x86_wrreg8(cpu, reg, val) \
+    do { \
+        if (reg8_islsb (reg)) \
+            (  *(((x86CPU *)(cpu))->reg_table_[reg8to32(reg)]) =\
+            (  *((x86CPU *)(cpu))->reg_table_[reg8to32(reg)] & 0xffffff00  ) | ((val) & 0x000000ff)  );\
+       else \
+            (  *(((x86CPU *)(cpu))->reg_table_[reg8to32(reg)]) = \
+            (  *((x86CPU *)(cpu))->reg_table_[reg8to32(reg)] & 0xffff00ff  ) | ((val) & 0x0000ff00)  ); \
+    } while (0)
 
-void c_x86_wrmem8(x86CPU *, addr_t, uint8_t);
-void c_x86_wrmem16(x86CPU *, addr_t, uint16_t);
-void c_x86_wrmem32(x86CPU *, addr_t, uint32_t);
+    // write to the 16-bit register from a 32-bit register
+#define x86_wrreg16(cpu, reg, val) (  *(((x86CPU *)(cpu))->reg_table_[reg]) =  \
+            (  *((x86CPU *)(cpu))->reg_table_[reg] & 0xffff0000  ) | ((val) & 0x0000ffff)  )
+#define x86_wrreg32(cpu, reg, val)(   *(((x86CPU *)(cpu))->reg_table_[reg]) = (val)    )
 
-uint8_t c_x86_atomic_rdmem8(x86CPU *, addr_t);
-uint16_t c_x86_atomic_rdmem16(x86CPU *, addr_t);
-uint32_t c_x86_atomic_rdmem32(x86CPU *, addr_t);
+#define x86_wrsreg(cpu, reg, val) (    *(((x86CPU *)(cpu))->sreg_table_[reg]) = (val)    )
 
-void c_x86_atomic_wrmem8(x86CPU *, addr_t, uint8_t);
-void c_x86_atomic_wrmem16(x86CPU *, addr_t, uint16_t);
-void c_x86_atomic_wrmem32(x86CPU *, addr_t, uint32_t);
+#define x86_setflag(cpu, flag) (  ((x86CPU *)(cpu))->eflags_ptr_->f_ ## flag = 1  )
+#define x86_clearflag(cpu, flag) (  ((x86CPU *)(cpu))->eflags_ptr_->f_ ## flag = 0  )
 
-
-// I like this function-like way of accessing the registers
-// read the 8 low/high bits
-#define C_x86_rdreg8(cpu, reg) reg8islb(reg) ? \
-    (  *(((x86CPU *)(cpu))->reg_table[reg8to32(reg)]) & 0x000000ff  ) : \
-    (  *(((x86CPU *)(cpu))->reg_table[reg8to32(reg)]) & 0x0000ff00  )
-// read the 16-bit register from a 32-bit register (i.e. eAX[ah])
-#define C_x86_rdreg16(cpu, reg) (  *(((x86CPU *)(cpu))->reg_table[reg]) & 0x0000ffff  )
-// read the register
-#define C_x86_rdreg32(cpu, reg) (  *(((x86CPU *)(cpu))->reg_table[reg])  )
-
-#define C_x86_rdsreg(cpu, reg) *(    ((x86CPU *)(cpu))->sreg_table[reg]    )
-
-// write to the 8 low bits of a register
-#define C_x86_wrreg8(cpu, reg, val) \
-do { \
-    if (reg8islb (reg)) \
-        (  *(((x86CPU *)(cpu))->reg_table[reg8to32(reg)]) =\
-        (  *((x86CPU *)(cpu))->reg_table[reg8to32(reg)] & 0xffffff00  ) | ((val) & 0x000000ff)  );\
-   else \
-        (  *(((x86CPU *)(cpu))->reg_table[reg8to32(reg)]) = \
-        (  *((x86CPU *)(cpu))->reg_table[reg8to32(reg)] & 0xffff00ff  ) | ((val) & 0x0000ff00)  ); \
-} while (0)
-
-// write to the 16-bit register from a 32-bit register
-#define C_x86_wrreg16(cpu, reg, val) (  *(((x86CPU *)(cpu))->reg_table[reg]) =  \
-        (  *((x86CPU *)(cpu))->reg_table[reg] & 0xffff0000  ) | ((val) & 0x0000ffff)  )
-#define C_x86_wrreg32(cpu, reg, val)(   *(((x86CPU *)(cpu))->reg_table[reg]) = (val)    )
-
-#define C_x86_wrsreg(cpu, reg, val) (    *(((x86CPU *)(cpu))->sreg_table[reg]) = (val)    )
-
-#define C_x86_setflag(cpu, flag) (  ((x86CPU *)(cpu))->eflags_ptr->f_ ## flag = 1  )
-#define C_x86_clearflag(cpu, flag) (  ((x86CPU *)(cpu))->eflags_ptr->f_ ## flag = 0  )
+#define x86_queryflag(cpu, flag) (   ((x86CPU *)(cpu))->eflags.f_ ## flag    )
 
 #endif /* CPU_H */

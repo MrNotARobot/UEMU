@@ -30,10 +30,12 @@ enum x86DecoderFlags {
     STOP_ON_RET
 };
 
-// it decodes the bytes from the given buffer and returns a instruction ready for execution
+// decodes the bytes from the given buffer and returns a instruction ready for execution
 struct instruction x86_decode(BasicMMU *, addr_t);
+// finds the last instruction before the given address
 addr_t x86_decodeuntil(BasicMMU *, addr_t, addr_t);
+// find the target address of a call
 addr_t x86_findcalltarget(void *cpu, struct exec_data data);
-char *x86_disassemble(struct instruction *);
+char *x86_disassemble(struct instruction);
 
 #endif /* DISASSEMBLER_H */

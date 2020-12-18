@@ -28,6 +28,9 @@
 
 typedef uint64_t addr_t;
 
+typedef uint16_t reg16_t;
+typedef uint32_t reg32_t;
+
 struct loadable_segment {
     addr_t s_offset; // offset from the beggining of the file
     addr_t s_vaddr; // the virtual address of the segment in memory

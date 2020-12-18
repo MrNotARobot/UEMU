@@ -27,7 +27,7 @@
 #include <stdarg.h>
 
 #include "disassembler.h"
-#include "bin-utils.h"
+#include "x86-utils.h"
 #include "cpu.h"
 #include "../memory.h"
 #include "../system.h"
@@ -35,8 +35,6 @@
 static char *modrm2str(uint8_t, uint8_t, uint32_t, int);
 static char *strcatimm(char *, const char *, uint32_t, const char *);
 static char *strcatimm2(char *, const char *, const char *, uint32_t);
-static uint8_t displsz16(uint8_t);
-static uint8_t displsz32(uint8_t);
 
 static char *strcatimm(char *dest, const char *beginning, uint32_t displacement, const char *end)
 {
@@ -61,32 +59,6 @@ static char *strcatimm2(char *dest, const char *beginning, const char *middle, u
 
     return dest;
 }
-
-static const char *reg2str(uint8_t regstr, int size)
-{
-    if (size == 8) {
-        switch (regstr) {
-            case AL: return "AL"; case CL: return "CL"; case DL: return "DL";
-            case BL: return "BL"; case AH: return "AH"; case CH: return "CH";
-            case DH: return "DH"; case BH: return "BH";
-        }
-    } else if (size == 16) {
-        switch (regstr) {
-            case AX: return "AX"; case CX: return "CX"; case DX: return "DX";
-            case BX: return "BX"; case SP: return "SP"; case BP: return "BP";
-            case SI: return "SI"; case DI: return "DI";
-        }
-    } else if (size == 32) {
-        switch (regstr) {
-            case EAX: return "EAX"; case ECX: return "ECX"; case EDX: return "EDX";
-            case EBX: return "EBX"; case ESP: return "ESP"; case EBP: return "EBP";
-            case ESI: return "ESI"; case EDI: return "EDI"; case EIP: return "EIP";
-        }
-    }
-
-    return NULL;
-}
-
 
 
 static char *modrm2str(uint8_t modrm, uint8_t sib, uint32_t imm, int oprnd_size)
@@ -122,7 +94,7 @@ static char *modrm2str(uint8_t modrm, uint8_t sib, uint32_t imm, int oprnd_size)
             case 0b111: return strcatimm(s, "[EDI+", imm, "]");
         }
     } else {
-        return strcat(s, reg2str(rm, oprnd_size));
+        return strcat(s, stringfyregister(rm, oprnd_size));
     }
 
     if (use_sib) {
@@ -144,7 +116,7 @@ static char *modrm2str(uint8_t modrm, uint8_t sib, uint32_t imm, int oprnd_size)
             case 0b100:
             case 0b110:
             case 0b111:
-                regstr = (char *)reg2str(base, 32);
+                regstr = (char *)stringfyregister(base, 32);
         }
 
         if (ss_factor == 0b00) {
@@ -324,7 +296,7 @@ char *x86_disassemble(struct instruction instr)
             break;
         case rm8_r8:
             arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
-            coolstrcat(s, 3, arg, ", ", reg2str(reg(instr.data.modrm), 8));
+            coolstrcat(s, 3, arg, ", ", stringfyregister(reg(instr.data.modrm), 8));
             xfree(arg);
             break;
         case rm16_1:
@@ -339,12 +311,12 @@ char *x86_disassemble(struct instruction instr)
             break;
         case rm16_r16:
             arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
-            coolstrcat(s, 3, arg, ", ", reg2str(reg(instr.data.modrm), 16));
+            coolstrcat(s, 3, arg, ", ", stringfyregister(reg(instr.data.modrm), 16));
             xfree(arg);
             break;
         case rm16_r16_CL:
             arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
-            coolstrcat(s, 5, arg, ", ", reg2str(reg(instr.data.modrm), 16), ", ", "CL");
+            coolstrcat(s, 5, arg, ", ", stringfyregister(reg(instr.data.modrm), 16), ", ", "CL");
             xfree(arg);
             break;
         case rm32_1:
@@ -360,44 +332,44 @@ char *x86_disassemble(struct instruction instr)
         case m32_r32:
         case rm32_r32:
             arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
-            coolstrcat(s, 3, arg, ", ", reg2str(reg(instr.data.modrm), 32));
+            coolstrcat(s, 3, arg, ", ", stringfyregister(reg(instr.data.modrm), 32));
             xfree(arg);
             break;
         case rm32_r32_CL:
             arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
-            coolstrcat(s, 5, arg, ", ", reg2str(reg(instr.data.modrm), 32), ", ", "CL");
+            coolstrcat(s, 5, arg, ", ", stringfyregister(reg(instr.data.modrm), 32), ", ", "CL");
             xfree(arg);
             break;
         case r8_rm8:
             arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
-            coolstrcat(s, 3, reg2str(reg(instr.data.modrm), 8), ", ", arg);
+            coolstrcat(s, 3, stringfyregister(reg(instr.data.modrm), 8), ", ", arg);
             xfree(arg);
             break;
         case r16_rm8:
             arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
-            coolstrcat(s, 3, reg2str(reg(instr.data.modrm), 16), ", ", arg);
+            coolstrcat(s, 3, stringfyregister(reg(instr.data.modrm), 16), ", ", arg);
             xfree(arg);
             break;
         case r16_m16:
         case r16_rm16:
             arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
-            coolstrcat(s, 3, reg2str(reg(instr.data.modrm), 16), ", ", arg);
+            coolstrcat(s, 3, stringfyregister(reg(instr.data.modrm), 16), ", ", arg);
             xfree(arg);
             break;
         case r32_m32:
         case r32_rm32:
             arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
-            coolstrcat(s, 3, reg2str(reg(instr.data.modrm), 32), ", ", arg);
+            coolstrcat(s, 3, stringfyregister(reg(instr.data.modrm), 32), ", ", arg);
             xfree(arg);
             break;
         case r32_rm8:
             arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
-            coolstrcat(s, 3, reg2str(reg(instr.data.modrm), 32), ", ", arg);
+            coolstrcat(s, 3, stringfyregister(reg(instr.data.modrm), 32), ", ", arg);
             xfree(arg);
             break;
         case r32_rm16:
             arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
-            coolstrcat(s, 3, reg2str(reg(instr.data.modrm), 32), ", ", arg);
+            coolstrcat(s, 3, stringfyregister(reg(instr.data.modrm), 32), ", ", arg);
             xfree(arg);
             break;
         case AX_r16:
@@ -417,44 +389,15 @@ char *x86_disassemble(struct instruction instr)
             coolstrcat(s, 3, "xmm1", ", ", "xmm2");
             break;
         case r16:
-            strcat(s, reg2str(instr.data.opc & EDI, 16));
+            strcat(s, stringfyregister(instr.data.opc & EDI, 16));
             break;
         case r32:
-            strcat(s, reg2str(instr.data.opc & EDI, 32));
+            strcat(s, stringfyregister(instr.data.opc & EDI, 32));
             break;
     }
 
     return s;
 }
-
-static uint8_t displsz16(uint8_t modrm)
-{
-    uint8_t mod = mod(modrm);
-    uint8_t rm = rm(modrm);
-    uint8_t sz = 0;
-
-    if (mod == 1)
-        sz = 8;
-    else if (mod == 2 || (mod == 0 && rm == 0b110))
-        sz = 16;
-
-    return sz;
-}
-
-static uint8_t displsz32(uint8_t modrm)
-{
-    uint8_t mod = mod(modrm);
-    uint8_t rm = rm(modrm);
-    uint8_t sz = 0;
-
-    if (mod == 1)
-        sz = 8;
-    else if (mod == 2 || (mod == 0 && rm == 0b101))
-        sz = 32;
-
-    return sz;
-}
-
 
 
 #define decode_fail(instr, byte)  \
@@ -640,9 +583,9 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
             // if we have a displacement to add to the effective address
             // we get the size of the displacement
             if (data.adrsz_pfx)
-                dispsz = displsz16(data.modrm);
+                dispsz = displacement16(data.modrm);
             else
-                dispsz = displsz32(data.modrm);
+                dispsz = displacement32(data.modrm);
 
             if (dispsz == 8) {
                 data.moffset = b_mmu_fetch(b_mmu, eip);
@@ -704,7 +647,7 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
             break;
         case rm16_imm16:
         case r16_rm16_imm16:
-            dispsz = displsz16(data.modrm);
+            dispsz = displacement16(data.modrm);
 
             if (dispsz == 8) {
                 data.moffset = b_mmu_fetch(b_mmu, eip);
@@ -742,7 +685,7 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
             break;
         case rm32_imm32:
         case r32_rm32_imm32:
-            dispsz = displsz32(data.modrm);
+            dispsz = displacement32(data.modrm);
 
             if (dispsz == 8) {
                 data.moffset = b_mmu_fetch(b_mmu, eip);
@@ -932,9 +875,9 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
         case r16_m16_16:
         case r32_m16_32:
             if (data.adrsz_pfx)
-                dispsz = displsz16(data.modrm);
+                dispsz = displacement16(data.modrm);
             else
-                dispsz = displsz32(data.modrm);
+                dispsz = displacement32(data.modrm);
 
             if (dispsz == 8) {
                 data.moffset = b_mmu_fetch(b_mmu, eip);
@@ -1036,38 +979,38 @@ addr_t x86_findcalltarget(void *cpu, struct exec_data data)
     addr_t effctvaddr;
 
     if (data.oprsz_pfx)
-        effctvaddr = c_x86_effctvaddr16(cpu, data.modrm, l16(data.moffset));
+        effctvaddr = x86_effctvaddr16(cpu, data.modrm, low16(data.moffset));
     else
-        effctvaddr = c_x86_effctvaddr32(cpu, data.modrm, data.sib, data.moffset);
+        effctvaddr = x86_effctvaddr32(cpu, data.modrm, data.sib, data.moffset);
 
     switch (data.opc) {
         case 0xE8:  // CALL rel32   CALL rel16
-            return C_x86_rdreg32(cpu, EIP) + data.imm1;
+            return x86_rdreg32(cpu, EIP) + data.imm1;
         case 0xFF:
             if (data.ext == 2) {    // FF /2 CALL r/m32 CALL r/m16
                 if (effctvaddr) {
                     if (data.oprsz_pfx)
-                        return c_x86_rdmem16(cpu, effctvaddr);
+                        return x86_rdmem16(cpu, effctvaddr);
                     else
-                        return c_x86_rdmem32(cpu, effctvaddr);
+                        return x86_rdmem32(cpu, effctvaddr);
                 } else {
                     if (data.oprsz_pfx)
-                        return C_x86_rdreg16(cpu, effctvreg(data.modrm));
+                        return x86_rdreg16(cpu, effctvregister(data.modrm));
                     else
-                        return C_x86_rdreg32(cpu, effctvreg(data.modrm));
+                        return x86_rdreg32(cpu, effctvregister(data.modrm));
                 }
             } else {    // FF /3 CALL m16:32  CALL m16:16
                 if (data.oprsz_pfx)
-                    return c_x86_rdmem16(cpu, effctvaddr + 2) + c_x86_rdmem16(cpu, effctvaddr);
+                    return x86_rdmem16(cpu, effctvaddr + 2) + x86_rdmem16(cpu, effctvaddr);
                 else
-                    return c_x86_rdmem16(cpu, effctvaddr + 4) + c_x86_rdmem32(cpu, effctvaddr);
+                    return x86_rdmem16(cpu, effctvaddr + 4) + x86_rdmem32(cpu, effctvaddr);
             }
             break;
         case 0x9A:
             if (data.oprsz_pfx)
-                return h16(data.imm1) + l16(data.imm1);
+                return high16(data.imm1) + low16(data.imm1);
             else
-                return l16(data.imm1) + data.imm2;
+                return low16(data.imm1) + data.imm2;
             break;
     }
 

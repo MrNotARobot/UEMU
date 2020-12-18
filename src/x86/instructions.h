@@ -290,7 +290,7 @@ uint8_t byte2segovr(uint8_t);
 
 void x86_aaa(void *, struct exec_data);
 void x86_aad(void *, struct exec_data);
-void x86_add(void *, struct exec_data);
+void x86_mm_add(void *, struct exec_data);
 void x86_aam(void *, struct exec_data);
 void x86_aas(void *, struct exec_data);
 void x86_adc(void *, struct exec_data);
@@ -706,7 +706,7 @@ void x86_rdpkru(void *, struct exec_data);
 void x86_rdpmc(void *, struct exec_data);
 void x86_rdtsc(void *, struct exec_data);
 void x86_rdtscp(void *, struct exec_data);
-void x86_ret(void *, struct exec_data);
+void x86_mm_ret(void *, struct exec_data);
 void x86_roundpd(void *, struct exec_data);
 void x86_roundps(void *, struct exec_data);
 void x86_roundsd(void *, struct exec_data);

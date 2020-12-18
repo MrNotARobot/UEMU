@@ -73,7 +73,7 @@ void g_elf_load(GenericELF *, const char *);
 void g_elf_unload(GenericELF *);
 
 ELF_Sym g_elf_getsym(GenericELF *, size_t);
-const char *g_elf_getsymbolfor(GenericELF *, size_t);
+const char *g_elf_getsymbol(GenericELF *, size_t);
 const char *g_elf_lookup(GenericELF *, addr_t);
 
 #endif /* GENERIC_ELF.H */

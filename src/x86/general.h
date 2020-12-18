@@ -45,8 +45,7 @@ uint16_t x86__mm_r16_m16_xor(void *, uint8_t, addr_t, _Bool);
 uint32_t x86__mm_r32_m32_xor(void *, uint8_t, addr_t, _Bool);
 
 // POP
-uint16_t x86__mm_sreg_pop16(void *, uint8_t);
-uint32_t x86__mm_sreg_pop32(void *, uint8_t);
+uint16_t x86__mm_sreg_pop(void *, uint8_t);
 uint32_t x86__mm_r32_pop(void *, uint8_t);
 uint16_t x86__mm_r16_pop(void *, uint8_t);
 uint32_t x86__mm_m32_pop(void *, addr_t);
@@ -112,6 +111,17 @@ void x86__mm_r32_imm32_mov(void *, uint8_t, uint32_t);
 void x86__mm_m8_imm8_mov(void *, uint8_t, uint8_t);
 void x86__mm_m16_imm16_mov(void *, uint8_t, uint8_t);
 void x86__mm_m32_imm32_mov(void *, uint8_t, uint8_t);
+
+
+// RET
+void x86__mm_near_ret16(void *);
+void x86__mm_near_ret32(void *);
+void x86__mm_far_ret16(void *);
+void x86__mm_far_ret32(void *);
+void x86__mm_imm16_near_ret16(void *, uint16_t);
+void x86__mm_imm16_near_ret32(void *, uint16_t);
+void x86__mm_imm16_far_ret16(void *, uint16_t);
+void x86__mm_imm16_far_ret32(void *, uint16_t);
 
 
 #endif /* GENERAL_H */

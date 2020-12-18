@@ -319,7 +319,7 @@ static char *fetch_symbol_from_file(GenericELF *g_elf, off_t strtab, uint32_t id
     return s;
 }
 
-const char *g_elf_getsymbolfor(GenericELF *g_elf, size_t idx)
+const char *g_elf_getsymbol(GenericELF *g_elf, size_t idx)
 {
     ASSERT(g_elf != NULL);
     ELF_Sym *sym = NULL;
@@ -345,7 +345,7 @@ const char *g_elf_lookup(GenericELF *g_elf, addr_t faddr)
 
     for (size_t i = 0; i < g_elf->g_symtabsz; i++) {
         if (faddr == g_elf->g_symtab[i].s_value) {
-            return g_elf_getsymbolfor(g_elf, i);
+            return g_elf_getsymbol(g_elf, i);
         }
     }
 
