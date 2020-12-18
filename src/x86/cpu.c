@@ -150,9 +150,7 @@ void c_x86_add2callstack(x86CPU *cpu, addr_t faddr)
 
     func = b_mmu_findfunction(&cpu->mmu, faddr);
 
-    s_info("%lx", faddr);
-    if (func)
-        cpu->e_state.callstack[i].f_sym = g_elf_getfromstrtab(&cpu->executable, func->fr_name);
+    cpu->e_state.callstack[i].f_sym = g_elf_getsymbolfor(&cpu->executable, func->fr_name);
 
     cpu->e_state.callstack[i].f_val = func->fr_start;
     cpu->e_state.callstack[i].f_rel = 0;
