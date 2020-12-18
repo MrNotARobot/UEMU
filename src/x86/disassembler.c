@@ -35,7 +35,6 @@
 static char *modrm2str(uint8_t, uint8_t, uint32_t, int);
 static char *strcatimm(char *, const char *, uint32_t, const char *);
 static char *strcatimm2(char *, const char *, const char *, uint32_t);
-static const char *reg2str(uint8_t, int);
 static uint8_t displsz16(uint8_t);
 static uint8_t displsz32(uint8_t);
 
@@ -43,7 +42,7 @@ static char *strcatimm(char *dest, const char *beginning, uint32_t displacement,
 {
     char *arg = NULL;
 
-    arg = int2str(displacement);
+    arg = int2hexstr(displacement, 0);
     coolstrcat(dest, 3, beginning, arg, end);
     xfree(arg);
 
@@ -55,7 +54,7 @@ static char *strcatimm2(char *dest, const char *beginning, const char *middle, u
 {
     char *arg = NULL;
 
-    arg = int2str(displacement);
+    arg = int2hexstr(displacement, 0);
     coolstrcat(dest, 3, beginning, middle, arg);
     xfree(arg);
 
@@ -133,7 +132,7 @@ static char *modrm2str(uint8_t modrm, uint8_t sib, uint32_t imm, int oprnd_size)
             case 0b101:
                 regstr = xcalloc(15, sizeof(*s)); // enough for EBP+0xdeadbeef
                 if (mod == 0)
-                    regstr = int2str(imm);
+                    regstr = int2hexstr(imm, 0);
                 else
                     strcatimm(regstr, "EBP+", imm, "");
                 is_ebp = 1;
@@ -198,42 +197,38 @@ static char *modrm2str(uint8_t modrm, uint8_t sib, uint32_t imm, int oprnd_size)
     return s;
 }
 
-char *x86_disassemble(struct instruction *instr)
+char *x86_disassemble(struct instruction instr)
 {
     char *s = NULL;
     size_t s_size = 35;
     size_t index = 0;
     char *arg = NULL;
 
-    if (!instr)
-        return NULL;
-
-    if (instr->encoding == no_encoding)
+    if (instr.encoding == no_encoding)
         return NULL;
     
     s = xcalloc(s_size, sizeof(*s));
 
-    for (size_t i = 0; i < strlen(instr->name); i++)
-        s[index++] = tolower(instr->name[i]);
+    for (size_t i = 0; i < strlen(instr.name); i++)
+        s[index++] = tolower(instr.name[i]);
 
-    if (instr->encoding != OP)
-        s[index++] = ' ';
+    s[index++] = ' ';
 
-    switch (instr->encoding) {
+    switch (instr.encoding) {
         case rm32_imm32:
         case rm32_imm8:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 32);
-            strcatimm2(s, arg, ", ", instr->data.imm1);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
+            strcatimm2(s, arg, ", ", instr.data.imm1);
             xfree(arg);
             break;
         case rm8_imm8:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 8);
-            strcatimm2(s, arg, ", ", instr->data.imm1);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
+            strcatimm2(s, arg, ", ", instr.data.imm1);
             xfree(arg);
             break;
         case rm16_imm8:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 16);
-            strcatimm2(s, arg, ", ", instr->data.imm1);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
+            strcatimm2(s, arg, ", ", instr.data.imm1);
             xfree(arg);
             break;
         case rela8:
@@ -242,176 +237,176 @@ char *x86_disassemble(struct instruction *instr)
         case rela16:
         case rela32:
         case imm32:
-            arg = int2str(instr->data.imm1);
+            arg = int2hexstr(instr.data.imm1, 0);
             strcat(s, arg);
             xfree(arg);
             break;
         case imm8_AL:
-            arg = int2str(instr->data.imm1);
+            arg = int2hexstr(instr.data.imm1, 0);
             coolstrcat(s, 3, arg, ", ", "AL");
             xfree(arg);
             break;
         case imm8_AX:
-            arg = int2str(instr->data.imm1);
+            arg = int2hexstr(instr.data.imm1, 0);
             coolstrcat(s, 3, arg, ", ", "AX");
             xfree(arg);
             break;
         case imm32_eAX:
         case imm8_eAX:
-            arg = int2str(instr->data.imm1);
+            arg = int2hexstr(instr.data.imm1, 0);
             coolstrcat(s, 3, arg, ", ", "EAX");
             xfree(arg);
             break;
         case AL_imm8:
-            arg = int2str(instr->data.imm1);
+            arg = int2hexstr(instr.data.imm1, 0);
             coolstrcat(s, 3, "AL", ", ", arg);
             xfree(arg);
             break;
         case AX_imm16:
         case AX_imm8:
-            arg = int2str(instr->data.imm1);
+            arg = int2hexstr(instr.data.imm1, 0);
             coolstrcat(s, 3, "AX", ", ", arg);
             xfree(arg);
             break;
         case eAX_imm32:
         case eAX_imm8:
-            arg = int2str(instr->data.imm1);
+            arg = int2hexstr(instr.data.imm1, 0);
             coolstrcat(s, 3, "EAX", ", ", arg);
             xfree(arg);
             break;
         case mm1_imm8:
-            arg = int2str(instr->data.imm1);
+            arg = int2hexstr(instr.data.imm1, 0);
             coolstrcat(s, 3, "mm1", ", ", arg);
             xfree(arg);
             break;
         case xmm1_imm8:
-            arg = int2str(instr->data.imm1);
+            arg = int2hexstr(instr.data.imm1, 0);
             coolstrcat(s, 3, "xmm1", ", ", arg);
             xfree(arg);
             break;
         case rm16_imm16:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 16);
-            strcatimm2(s, arg, ", ", instr->data.imm1);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
+            strcatimm2(s, arg, ", ", instr.data.imm1);
             xfree(arg);
             break;
         case imm16_imm8:
-            arg = int2str(instr->data.imm1);
-            strcatimm2(s, arg, ", ", instr->data.imm2);
+            arg = int2hexstr(instr.data.imm1, 0);
+            strcatimm2(s, arg, ", ", instr.data.imm2);
             xfree(arg);
             break;
         case rm8:
         case m8:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 8);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
             strcat(s, arg);
             xfree(arg);
             break;
         case rm16:
         case m16:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 16);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
             strcat(s, arg);
             xfree(arg);
             break;
         case rm32:
         case m32:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 32);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
             strcat(s, arg);
             xfree(arg);
             break;
         case rm8_1:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 8);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
             coolstrcat(s, 3, arg, ", ", "1");
             xfree(arg);
             break;
         case rm8_CL:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 8);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
             coolstrcat(s, 3, arg, ", ", "CL");
             xfree(arg);
             break;
         case rm8_r8:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 8);
-            coolstrcat(s, 3, arg, ", ", reg2str(reg(instr->data.modrm), 8));
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
+            coolstrcat(s, 3, arg, ", ", reg2str(reg(instr.data.modrm), 8));
             xfree(arg);
             break;
         case rm16_1:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 16);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
             coolstrcat(s, 3, arg, ", ", "1");
             xfree(arg);
             break;
         case rm16_CL:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 16);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
             coolstrcat(s, 3, arg, ", ", "CL");
             xfree(arg);
             break;
         case rm16_r16:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 16);
-            coolstrcat(s, 3, arg, ", ", reg2str(reg(instr->data.modrm), 16));
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
+            coolstrcat(s, 3, arg, ", ", reg2str(reg(instr.data.modrm), 16));
             xfree(arg);
             break;
         case rm16_r16_CL:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 16);
-            coolstrcat(s, 5, arg, ", ", reg2str(reg(instr->data.modrm), 16), ", ", "CL");
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
+            coolstrcat(s, 5, arg, ", ", reg2str(reg(instr.data.modrm), 16), ", ", "CL");
             xfree(arg);
             break;
         case rm32_1:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 32);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
             coolstrcat(s, 3, arg, ", ", "1");
             xfree(arg);
             break;
         case rm32_CL:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 32);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
             coolstrcat(s, 3, arg, ", ", "CL");
             xfree(arg);
             break;
         case m32_r32:
         case rm32_r32:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 32);
-            coolstrcat(s, 3, arg, ", ", reg2str(reg(instr->data.modrm), 32));
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
+            coolstrcat(s, 3, arg, ", ", reg2str(reg(instr.data.modrm), 32));
             xfree(arg);
             break;
         case rm32_r32_CL:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 32);
-            coolstrcat(s, 5, arg, ", ", reg2str(reg(instr->data.modrm), 32), ", ", "CL");
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
+            coolstrcat(s, 5, arg, ", ", reg2str(reg(instr.data.modrm), 32), ", ", "CL");
             xfree(arg);
             break;
         case r8_rm8:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 8);
-            coolstrcat(s, 3, reg2str(reg(instr->data.modrm), 8), ", ", arg);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
+            coolstrcat(s, 3, reg2str(reg(instr.data.modrm), 8), ", ", arg);
             xfree(arg);
             break;
         case r16_rm8:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 8);
-            coolstrcat(s, 3, reg2str(reg(instr->data.modrm), 16), ", ", arg);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
+            coolstrcat(s, 3, reg2str(reg(instr.data.modrm), 16), ", ", arg);
             xfree(arg);
             break;
         case r16_m16:
         case r16_rm16:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 16);
-            coolstrcat(s, 3, reg2str(reg(instr->data.modrm), 16), ", ", arg);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
+            coolstrcat(s, 3, reg2str(reg(instr.data.modrm), 16), ", ", arg);
             xfree(arg);
             break;
         case r32_m32:
         case r32_rm32:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 32);
-            coolstrcat(s, 3, reg2str(reg(instr->data.modrm), 32), ", ", arg);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
+            coolstrcat(s, 3, reg2str(reg(instr.data.modrm), 32), ", ", arg);
             xfree(arg);
             break;
         case r32_rm8:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 8);
-            coolstrcat(s, 3, reg2str(reg(instr->data.modrm), 32), ", ", arg);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
+            coolstrcat(s, 3, reg2str(reg(instr.data.modrm), 32), ", ", arg);
             xfree(arg);
             break;
         case r32_rm16:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 16);
-            coolstrcat(s, 3, reg2str(reg(instr->data.modrm), 32), ", ", arg);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
+            coolstrcat(s, 3, reg2str(reg(instr.data.modrm), 32), ", ", arg);
             xfree(arg);
             break;
         case AX_r16:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 16);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
             coolstrcat(s, 3, "AX", ", ", arg);
             xfree(arg);
             break;
         case eAX_r32:
-            arg = modrm2str(instr->data.modrm, instr->data.sib, instr->data.imm1, 32);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
             coolstrcat(s, 3, "EAX", ", ", arg);
             xfree(arg);
             break;
@@ -422,10 +417,10 @@ char *x86_disassemble(struct instruction *instr)
             coolstrcat(s, 3, "xmm1", ", ", "xmm2");
             break;
         case r16:
-            strcat(s, reg2str(instr->data.opc & EDI, 16));
+            strcat(s, reg2str(instr.data.opc & EDI, 16));
             break;
         case r32:
-            strcat(s, reg2str(instr->data.opc & EDI, 32));
+            strcat(s, reg2str(instr.data.opc & EDI, 32));
             break;
     }
 

@@ -96,29 +96,51 @@ char *coolstrcat(char *dest, size_t argc, ...)
     return dest;
 }
 
-char *int2str(uint32_t n)
+char *int2hexstr(uint32_t n, uint8_t padding)
 {
-    char *s = xcalloc(11, sizeof(*s));
+    char *s = xcalloc(11, sizeof(*s));  // 0xdeadbeef = 10 characters + null byte
     size_t index = 0;
     uint32_t mask = 0xf0000000;
     int nibble = 8;
     _Bool found_bits = 0;   // to not add leading bytes to the string
+    size_t first_nibble = 0;
 
     s[index++] = '0';
     s[index++] = 'x';
 
-    if (!n) {
+    if (!n && !padding) {
         s[index++] = '0';
         return s;
     }
 
+    if (padding) {
+        for (size_t i = nibble, k = mask; i != 0; i--, k >>=4) {
+            if ((n & k) >> 4*(i - 1)) {
+                first_nibble = i;
+                if (first_nibble >= padding)
+                    padding = 0;
+                else
+                    padding -= first_nibble;
+                break;
+            }
+        }
+            if (index + padding >= 10)
+                s = xreallocarray(s, index + padding + first_nibble + 1, sizeof(*s));
+
+            for (size_t i = 0; i < padding; i++)
+                s[index++] = '0';
+    }
+
+    if (!n)
+        return s;
+
     while (nibble != 0) {
 
-        if (index > 2)
+        if ((index - padding) > 2)
             found_bits = 1;
 
         switch ((n & mask) >> 4*(nibble - 1)) {
-            case 0: (found_bits) ? s[index++] = '0' : (void) 0; break;
+            case 0: (found_bits) ? s[index++] = '0' : 0; break;
             case 1: s[index++] = '1'; break;
             case 2: s[index++] = '2'; break; case 3: s[index++] = '3'; break;
             case 4: s[index++] = '4'; break; case 5: s[index++] = '5'; break;
@@ -128,9 +150,10 @@ char *int2str(uint32_t n)
             case 12: s[index++] = 'c'; break; case 13: s[index++] = 'd'; break;
             case 14: s[index++] = 'e'; break; case 15: s[index++] = 'f'; break;
         }
-        nibble --;
+        nibble--;
         mask >>= 4;
     }
+
     return s;
 }
 
