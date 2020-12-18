@@ -181,7 +181,7 @@ static void elf_symtab_load32(GenericELF *g_elf)
                 return;
             }
 
-            if (sym.st_info == STT_FUNC)
+            if (ELF32_ST_TYPE(sym.st_info) != STT_FUNC && ELF32_ST_TYPE(sym.st_info) != STT_OBJECT)
                 continue;
 
             g_elf->g_symtabsz++;
@@ -288,9 +288,8 @@ void g_elf_unload(GenericELF *g_elf)
 {
     ASSERT(g_elf != NULL);
 
-    for (size_t i = 0; i < g_elf->g_symtabsz; i++) {
+    for (size_t i = 0; i < g_elf->g_symtabsz; i++)
         xfree(g_elf->g_symtab[i].s_name);
-    }
 
     xfree(g_elf->g_symtab);
     xfree(g_elf->g_name);
@@ -323,12 +322,18 @@ static char *fetch_symbol_from_file(GenericELF *g_elf, off_t strtab, uint32_t id
 const char *g_elf_getsymbolfor(GenericELF *g_elf, size_t idx)
 {
     ASSERT(g_elf != NULL);
+    ELF_Sym *sym = NULL;
 
-    ELF_Sym sym = g_elf_getsym(g_elf, idx);
+    if (idx < g_elf->g_symtabsz)
+        sym = &g_elf->g_symtab[idx];
 
-    if (!sym.s_name)
-        sym.s_name = fetch_symbol_from_file(g_elf, sym.s_strtab, sym.s_strtabidx, sym.s_size);
-    return sym.s_name;
+    if (sym) {
+        if (!sym->s_name)
+            sym->s_name = fetch_symbol_from_file(g_elf, sym->s_strtab, sym->s_strtabidx, sym->s_size);
+        return sym->s_name;
+    }
+
+    return NULL;
 }
 
 
@@ -340,7 +345,7 @@ const char *g_elf_lookup(GenericELF *g_elf, addr_t faddr)
 
     for (size_t i = 0; i < g_elf->g_symtabsz; i++) {
         if (faddr == g_elf->g_symtab[i].s_value) {
-            return g_elf_getsymbolfor(g_elf, faddr);
+            return g_elf_getsymbolfor(g_elf, i);
         }
     }
 
