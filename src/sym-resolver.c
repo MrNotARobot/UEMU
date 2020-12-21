@@ -291,6 +291,10 @@ void sr_closecache(sym_resolver_t *resolver)
         for (size_t k = 0; k < resolver->sr_regions[i].mr_nzones; k++) {
             xfree(resolver->sr_regions[i].mr_zones[k].mz_low);
         }
+<<<<<<< HEAD
+=======
+        xfree(resolver->sr_regions[i].mr_zones);
+>>>>>>> x86MMU
     }
 
     close(resolver->sr_fd);

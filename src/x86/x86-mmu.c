@@ -43,6 +43,14 @@ enum x86MMUMmapFlags {
     MF_STACK = 1
 };
 
+enum x86MMUQueries {
+    SD_LIMIT,
+    SD_BASE,
+    SD_PROT
+};
+
+uint64_t mmu_query(const x86MMU *, moffset32_t, int);
+
 static void *mmu_mmap(x86MMU *, moffset32_t, size_t, int, int, int, off_t, size_t);
 
 static void *translate(x86MMU *, moffset32_t);
@@ -234,8 +242,8 @@ void mmu_mmap_loadable(x86MMU *mmu, GenericELF *g_elf)
         return;
     }
 
-    for (size_t i = 0; i < G_elf_nloadable(g_elf); i++, prot = 0) {
-        segment = G_elf_loadable(g_elf)[i];
+    for (size_t i = 0; i < elf_nloadable(g_elf); i++, prot = 0) {
+        segment = elf_loadable(g_elf)[i];
 
         if (segment.s_perms & PF_R)
             prot |= PROT_READ;
@@ -245,7 +253,7 @@ void mmu_mmap_loadable(x86MMU *mmu, GenericELF *g_elf)
             prot |= PROT_EXEC;
 
         mmu_mmap(mmu, segment.s_vaddr, segment.s_memsz, prot, 0,
-                    G_elf_underlfd(g_elf), segment.s_offset, segment.s_filesz);
+                    elf_underlfd(g_elf), segment.s_offset, segment.s_filesz);
 
         if (mmu_error(mmu))
             return;

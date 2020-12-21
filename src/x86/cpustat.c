@@ -322,6 +322,7 @@ void x86_cpustat_print(void *cpu)
         record = x86_cpustat_callstack_i(cpu, i);
         char *s = disassembleptr(cpu, record->f_val + record->f_rel);
         s_info("%s", s);
+        xfree(s);
     }
 
     s_info(" ");

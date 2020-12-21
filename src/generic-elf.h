@@ -30,6 +30,7 @@
 #include "types.h"
 
 typedef struct {
+<<<<<<< HEAD
     struct loadable_segment *g_loadable;
     moffset32_t g_entryp;
     uint16_t g_nloadable;
@@ -37,6 +38,15 @@ typedef struct {
     char *g_name;
     int g_execstack;
     int g_fd;
+=======
+    struct loadable_segment *loadable;
+    moffset32_t entryp;
+    uint16_t nloadable;
+    uint16_t machine; // the architecture of the file. See elf.e_machine in elf(5) for values.
+    char *name;
+    int execstack;
+    int fd;
+>>>>>>> x86MMU
 
     struct error_description err;
 } GenericELF;
@@ -47,18 +57,30 @@ enum GenericELF_ERRORS {
     NOTAEXEC
 };
 
-#define G_elf_error(g_elf) ((g_elf)->err.errnum)
-#define G_elf_errstr(g_elf) ((g_elf)->err.description)
+#define elf_error(elf) ((elf)->err.errnum)
+#define elf_errstr(elf) ((elf)->err.description)
 
+<<<<<<< HEAD
 #define G_elf_loadable(g_elf) ((g_elf)->g_loadable)
 #define G_elf_nloadable(g_elf) ((g_elf)->g_nloadable)
 #define G_elf_underlfd(g_elf) ((g_elf)->g_fd)
 #define G_elf_execstack(g_elf) ((g_elf)->g_execstack)
+=======
+#define elf_loadable(elf) ((elf)->loadable)
+#define elf_entrypoint(elf) ((elf)->entryp)
+#define elf_nloadable(elf) ((elf)->nloadable)
+#define elf_underlfd(elf) ((elf)->fd)
+#define elf_execstack(elf) ((elf)->execstack)
+>>>>>>> x86MMU
 
 // load program information needed for execution.
-void g_elf_load(GenericELF *, const char *);
+void elf_load(GenericELF *, const char *);
 
 // free any memory allocated.
+<<<<<<< HEAD
 void g_elf_unload(GenericELF *);
+=======
+void elf_unload(GenericELF *);
+>>>>>>> x86MMU
 
 #endif /* GENERIC_ELF.H */
