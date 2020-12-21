@@ -63,14 +63,6 @@ enum x86MMUErrors {
 void mmu_init(x86MMU *);
 void mmu_unloadall(x86MMU *);
 
-enum x86MMUQueries {
-    SD_LIMIT,
-    SD_BASE,
-    SD_PROT
-};
-
-uint64_t mmu_query(const x86MMU *, moffset32_t, int);
-
 moffset32_t mmu_create_stack(x86MMU *, int);
 
 enum x86MMUStackFlags {

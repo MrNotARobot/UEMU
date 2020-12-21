@@ -80,7 +80,7 @@ void x86_stopcpu(x86CPU *cpu)
     x86_free_opcode_table();
     sr_closecache(x86_resolver(cpu));
 
-    g_elf_unload(&cpu->executable);
+    elf_unload(&cpu->executable);
     mmu_unloadall(&cpu->mmu);
 
     xfree(cpu->cpustat.callstack);
@@ -375,10 +375,10 @@ void x86_cpu_exec(char *executable, int argc, char *argv[], char **envp)
 
     // map the executable segments to memory.
     // no shared library is loaded just yet.
-    g_elf_load(&cpu->executable, executable);
-    if (G_elf_error(&cpu->executable)) {
+    elf_load(&cpu->executable, executable);
+    if (elf_error(&cpu->executable)) {
         x86_stopcpu(cpu);
-        s_error(1, "%s", G_elf_errstr(&cpu->executable));
+        s_error(1, "%s", elf_errstr(&cpu->executable));
     }
 
     // actually map the segments
@@ -394,7 +394,7 @@ void x86_cpu_exec(char *executable, int argc, char *argv[], char **envp)
     xfree(executable);
 
     // create a stack
-    if (G_elf_execstack(&cpu->executable))
+    if (elf_execstack(&cpu->executable))
         stack_flags |= B_STACKEXEC;
 
     x86_wrreg32(cpu, ESP, mmu_create_stack(&cpu->mmu, stack_flags));
@@ -403,7 +403,7 @@ void x86_cpu_exec(char *executable, int argc, char *argv[], char **envp)
 
     build_environment(cpu, argc, argv, envp);
 
-    x86_wrreg32(cpu, EIP, cpu->executable.g_entryp);
+    x86_wrreg32(cpu, EIP, elf_entrypoint(x86_elf(cpu)));
 
     x86_cpustat_push_callstack(cpu, x86_rdreg32(cpu, EIP));
 
