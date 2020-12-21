@@ -26,8 +26,8 @@
 // XOR
 
 static uint32_t x86__mm_rX_immX_xor(void *, uint8_t, uint32_t, int);
-static uint32_t x86__mm_mX_immX_xor(void *, addr_t, uint32_t, int);
-static uint32_t x86__mm_mX_immX_locked_xor(void *, addr_t, uint32_t, int);
+static uint32_t x86__mm_mX_immX_xor(void *, moffset32_t, uint32_t, int);
+static uint32_t x86__mm_mX_immX_locked_xor(void *, moffset32_t, uint32_t, int);
 
 static uint32_t x86__mm_rX_immX_xor(void *cpu, uint8_t reg, uint32_t imm, int size)
 {
@@ -58,7 +58,7 @@ static uint32_t x86__mm_rX_immX_xor(void *cpu, uint8_t reg, uint32_t imm, int si
     return result;
 }
 
-static uint32_t x86__mm_mX_immX_xor(void *cpu, addr_t effctvaddr, uint32_t imm, int size)
+static uint32_t x86__mm_mX_immX_xor(void *cpu, moffset32_t effctvaddr, uint32_t imm, int size)
 {
     uint32_t result;
 
@@ -88,7 +88,7 @@ static uint32_t x86__mm_mX_immX_xor(void *cpu, addr_t effctvaddr, uint32_t imm, 
     return result;
 }
 
-static uint32_t x86__mm_mX_immX_locked_xor(void *cpu, addr_t effctvaddr, uint32_t imm, int size)
+static uint32_t x86__mm_mX_immX_locked_xor(void *cpu, moffset32_t effctvaddr, uint32_t imm, int size)
 {
     uint32_t result;
 
@@ -133,21 +133,21 @@ uint32_t x86__mm_eax_imm32_xor(void *cpu, uint32_t imm)
     return x86__mm_r32_imm32_xor(cpu, EAX, imm);
 }
 
-uint8_t x86__mm_m8_imm8_xor(void *cpu, addr_t effctvaddr, uint8_t imm, _Bool lock)
+uint8_t x86__mm_m8_imm8_xor(void *cpu, moffset32_t effctvaddr, uint8_t imm, _Bool lock)
 {
     if (lock)
         return (uint8_t)x86__mm_mX_immX_locked_xor(cpu, effctvaddr, imm, 8);
     return (uint8_t)x86__mm_mX_immX_xor(cpu, effctvaddr, imm, 8);
 }
 
-uint16_t x86__mm_m16_imm16_xor(void *cpu, addr_t effctvaddr, uint16_t imm, _Bool lock)
+uint16_t x86__mm_m16_imm16_xor(void *cpu, moffset32_t effctvaddr, uint16_t imm, _Bool lock)
 {
     if (lock)
         return (uint16_t)x86__mm_mX_immX_locked_xor(cpu, effctvaddr, imm, 16);
     return (uint16_t)x86__mm_mX_immX_xor(cpu, effctvaddr, imm, 16);
 }
 
-uint32_t x86__mm_m32_imm32_xor(void *cpu, addr_t effctvaddr, uint32_t imm, _Bool lock)
+uint32_t x86__mm_m32_imm32_xor(void *cpu, moffset32_t effctvaddr, uint32_t imm, _Bool lock)
 {
     if (lock)
         return x86__mm_mX_immX_locked_xor(cpu, effctvaddr, imm, 32);
@@ -185,42 +185,42 @@ uint32_t x86__mm_r32_r32_xor(void *cpu, uint8_t dest, uint8_t reg2)
     return x86__mm_rX_immX_xor(cpu, dest, x86_rdreg32(cpu, reg2), 32);
 }
 
-uint8_t x86__mm_m8_r8_xor(void *cpu, addr_t effctvaddr, uint8_t reg, _Bool lock)
+uint8_t x86__mm_m8_r8_xor(void *cpu, moffset32_t effctvaddr, uint8_t reg, _Bool lock)
 {
     if (lock)
         return (uint8_t)x86__mm_mX_immX_locked_xor(cpu, effctvaddr, x86_rdreg8(cpu, reg), 8);
     return (uint8_t)x86__mm_mX_immX_xor(cpu, effctvaddr, x86_rdreg8(cpu, reg), 8);
 }
 
-uint16_t x86__mm_m16_r16_xor(void *cpu, addr_t effctvaddr, uint8_t reg, _Bool lock)
+uint16_t x86__mm_m16_r16_xor(void *cpu, moffset32_t effctvaddr, uint8_t reg, _Bool lock)
 {
     if (lock)
         return (uint16_t)x86__mm_mX_immX_locked_xor(cpu, effctvaddr, x86_rdreg16(cpu, reg), 16);
     return (uint16_t)x86__mm_mX_immX_xor(cpu, effctvaddr, x86_rdreg16(cpu, reg), 16);
 }
 
-uint32_t x86__mm_m32_r32_xor(void *cpu, addr_t effctvaddr, uint8_t reg, _Bool lock)
+uint32_t x86__mm_m32_r32_xor(void *cpu, moffset32_t effctvaddr, uint8_t reg, _Bool lock)
 {
     if (lock)
         return x86__mm_mX_immX_locked_xor(cpu, effctvaddr, x86_rdreg32(cpu, reg), 32);
     return x86__mm_mX_immX_xor(cpu, effctvaddr, x86_rdreg32(cpu, reg), 32);
 }
 
-uint8_t x86__mm_r8_m8_xor(void *cpu, uint8_t reg, addr_t effctvaddr, _Bool lock)
+uint8_t x86__mm_r8_m8_xor(void *cpu, uint8_t reg, moffset32_t effctvaddr, _Bool lock)
 {
     if (lock)
         return (uint8_t)x86__mm_rX_immX_xor(cpu, reg, x86_atomic_rdmem8(cpu, effctvaddr), 8);
     return (uint8_t)x86__mm_rX_immX_xor(cpu, reg, x86_rdmem8(cpu, effctvaddr), 8);
 }
 
-uint16_t x86__mm_r16_m16_xor(void *cpu, uint8_t reg, addr_t effctvaddr, _Bool lock)
+uint16_t x86__mm_r16_m16_xor(void *cpu, uint8_t reg, moffset32_t effctvaddr, _Bool lock)
 {
     if (lock)
         return (uint16_t)x86__mm_rX_immX_xor(cpu, reg, x86_atomic_rdmem16(cpu, effctvaddr), 16);
     return (uint16_t)x86__mm_rX_immX_xor(cpu, reg, x86_rdmem16(cpu, effctvaddr), 16);
 }
 
-uint32_t x86__mm_r32_m32_xor(void *cpu, uint8_t reg, addr_t effctvaddr, _Bool lock)
+uint32_t x86__mm_r32_m32_xor(void *cpu, uint8_t reg, moffset32_t effctvaddr, _Bool lock)
 {
     if (lock)
         return x86__mm_rX_immX_xor(cpu, reg, x86_atomic_rdmem32(cpu, effctvaddr), 32);
@@ -230,7 +230,7 @@ uint32_t x86__mm_r32_m32_xor(void *cpu, uint8_t reg, addr_t effctvaddr, _Bool lo
 // POP
 
 static uint32_t x86__mm_rX_popX(void *, uint8_t, int);
-static uint32_t x86__mm_mX_popX(void *, addr_t, int);
+static uint32_t x86__mm_mX_popX(void *, moffset32_t, int);
 
 static uint32_t x86__mm_rX_popX(void *cpu, uint8_t reg, int size)
 {
@@ -249,7 +249,7 @@ static uint32_t x86__mm_rX_popX(void *cpu, uint8_t reg, int size)
     return value;
 }
 
-static uint32_t x86__mm_mX_popX(void *cpu, addr_t effctvaddr, int size)
+static uint32_t x86__mm_mX_popX(void *cpu, moffset32_t effctvaddr, int size)
 {
     uint32_t value;
 
@@ -286,12 +286,12 @@ uint16_t x86__mm_r16_pop(void *cpu, uint8_t reg)
     return (uint16_t)x86__mm_rX_popX(cpu, reg, 16);
 }
 
-uint32_t x86__mm_m32_pop(void *cpu, addr_t effctvaddr)
+uint32_t x86__mm_m32_pop(void *cpu, moffset32_t effctvaddr)
 {
     return x86__mm_mX_popX(cpu, effctvaddr, 32);
 }
 
-uint16_t x86__mm_m16_pop(void *cpu, addr_t effctvaddr)
+uint16_t x86__mm_m16_pop(void *cpu, moffset32_t effctvaddr)
 {
     return (uint16_t)x86__mm_mX_popX(cpu, effctvaddr, 16);
 }
@@ -317,7 +317,7 @@ void x86__mm_r32_push(void *cpu, uint8_t reg)
     x86__mm_immX_push(cpu, x86_rdreg32(cpu, reg), 32);
 }
 
-void x86__mm_m32_push(void *cpu, addr_t effctvaddr)
+void x86__mm_m32_push(void *cpu, moffset32_t effctvaddr)
 {
     x86__mm_immX_push(cpu, x86_rdmem32(cpu, effctvaddr), 32);
 }
@@ -327,7 +327,7 @@ void x86__mm_r16_push(void *cpu, uint8_t reg)
     x86__mm_immX_push(cpu, x86_rdreg16(cpu, reg), 16);
 }
 
-void x86__mm_m16_push(void *cpu, addr_t effctvaddr)
+void x86__mm_m16_push(void *cpu, moffset32_t effctvaddr)
 {
     x86__mm_immX_push(cpu, x86_rdmem16(cpu, effctvaddr), 16);
 }
@@ -352,8 +352,8 @@ void x86__mm_imm32_push(void *cpu, uint32_t imm)
 // AND
 
 static uint32_t x86__mm_rX_immX_and(void *, uint8_t, uint32_t, int);
-static uint32_t x86__mm_mX_immX_and(void *, addr_t, uint32_t, int);
-static uint32_t x86__mm_mX_immX_locked_and(void *, addr_t, uint32_t, int);
+static uint32_t x86__mm_mX_immX_and(void *, moffset32_t, uint32_t, int);
+static uint32_t x86__mm_mX_immX_locked_and(void *, moffset32_t, uint32_t, int);
 
 #include "../system.h"
 static uint32_t x86__mm_rX_immX_and(void *cpu, uint8_t reg, uint32_t imm, int size)
@@ -386,7 +386,7 @@ static uint32_t x86__mm_rX_immX_and(void *cpu, uint8_t reg, uint32_t imm, int si
     return result;
 }
 
-static uint32_t x86__mm_mX_immX_and(void *cpu, addr_t effctvaddr, uint32_t imm, int size)
+static uint32_t x86__mm_mX_immX_and(void *cpu, moffset32_t effctvaddr, uint32_t imm, int size)
 {
     uint32_t result;
 
@@ -416,7 +416,7 @@ static uint32_t x86__mm_mX_immX_and(void *cpu, addr_t effctvaddr, uint32_t imm, 
     return result;
 }
 
-static uint32_t x86__mm_mX_immX_locked_and(void *cpu, addr_t effctvaddr, uint32_t imm, int size)
+static uint32_t x86__mm_mX_immX_locked_and(void *cpu, moffset32_t effctvaddr, uint32_t imm, int size)
 {
     uint32_t result;
 
@@ -477,21 +477,21 @@ uint32_t x86__mm_r32_imm32_and(void *cpu, uint8_t reg, uint32_t imm)
     return x86__mm_rX_immX_and(cpu, reg, imm, 32);
 }
 
-uint8_t x86__mm_m8_imm8_and(void *cpu, addr_t effctvaddr, uint8_t imm, _Bool lock)
+uint8_t x86__mm_m8_imm8_and(void *cpu, moffset32_t effctvaddr, uint8_t imm, _Bool lock)
 {
     if (lock)
         return (uint8_t)x86__mm_mX_immX_locked_and(cpu, effctvaddr, imm, 8);
     return (uint8_t)x86__mm_mX_immX_and(cpu, effctvaddr, imm, 8);
 }
 
-uint16_t x86__mm_m16_imm16_and(void *cpu, addr_t effctvaddr, uint16_t imm, _Bool lock)
+uint16_t x86__mm_m16_imm16_and(void *cpu, moffset32_t effctvaddr, uint16_t imm, _Bool lock)
 {
     if (lock)
         return (uint16_t)x86__mm_mX_immX_locked_and(cpu, effctvaddr, imm, 16);
     return (uint16_t)x86__mm_mX_immX_and(cpu, effctvaddr, imm, 16);
 }
 
-uint32_t x86__mm_m32_imm32_and(void *cpu, addr_t effctvaddr, uint32_t imm, _Bool lock)
+uint32_t x86__mm_m32_imm32_and(void *cpu, moffset32_t effctvaddr, uint32_t imm, _Bool lock)
 {
     if (lock)
         return x86__mm_mX_immX_locked_and(cpu, effctvaddr, imm, 32);
@@ -513,42 +513,42 @@ uint32_t x86__mm_r32_r32_and(void *cpu, uint8_t dest, uint8_t reg2)
     return x86__mm_rX_immX_and(cpu, dest, x86_rdreg32(cpu, reg2), 32);
 }
 
-uint8_t x86__mm_m8_r8_and(void *cpu, addr_t effctvaddr, uint8_t reg, _Bool lock)
+uint8_t x86__mm_m8_r8_and(void *cpu, moffset32_t effctvaddr, uint8_t reg, _Bool lock)
 {
     if (lock)
         return (uint8_t)x86__mm_mX_immX_locked_and(cpu, effctvaddr, x86_rdreg8(cpu, reg), 8);
     return (uint8_t)x86__mm_mX_immX_and(cpu, effctvaddr, x86_rdreg8(cpu, reg), 8);
 }
 
-uint16_t x86__mm_m16_r16_and(void *cpu, addr_t effctvaddr, uint8_t reg, _Bool lock)
+uint16_t x86__mm_m16_r16_and(void *cpu, moffset32_t effctvaddr, uint8_t reg, _Bool lock)
 {
     if (lock)
         return (uint16_t)x86__mm_mX_immX_locked_and(cpu, effctvaddr, x86_rdreg16(cpu, reg), 16);
     return (uint16_t)x86__mm_mX_immX_and(cpu, effctvaddr, x86_rdreg16(cpu, reg), 16);
 }
 
-uint32_t x86__mm_m32_r32_and(void *cpu, addr_t effctvaddr, uint8_t reg, _Bool lock)
+uint32_t x86__mm_m32_r32_and(void *cpu, moffset32_t effctvaddr, uint8_t reg, _Bool lock)
 {
     if (lock)
         return x86__mm_mX_immX_locked_and(cpu, effctvaddr, x86_rdreg32(cpu, reg), 32);
     return x86__mm_mX_immX_and(cpu, effctvaddr, x86_rdreg32(cpu, reg), 16);
 }
 
-uint8_t x86__mm_r8_m8_and(void *cpu, uint8_t reg, addr_t effctvaddr, _Bool lock)
+uint8_t x86__mm_r8_m8_and(void *cpu, uint8_t reg, moffset32_t effctvaddr, _Bool lock)
 {
     if (lock)
         return (uint8_t)x86__mm_rX_immX_and(cpu, reg, x86_atomic_rdmem8(cpu, effctvaddr), 8);
     return (uint8_t)x86__mm_rX_immX_and(cpu, reg, x86_rdmem8(cpu, effctvaddr), 8);
 }
 
-uint16_t x86__mm_r16_m16_and(void *cpu, uint8_t reg, addr_t effctvaddr, _Bool lock)
+uint16_t x86__mm_r16_m16_and(void *cpu, uint8_t reg, moffset32_t effctvaddr, _Bool lock)
 {
     if (lock)
         return (uint16_t)x86__mm_rX_immX_and(cpu, reg, x86_atomic_rdmem16(cpu, effctvaddr), 16);
     return (uint16_t)x86__mm_rX_immX_and(cpu, reg, x86_rdmem16(cpu, effctvaddr), 16);
 }
 
-uint32_t x86__mm_r32_m32_and(void *cpu, uint8_t reg, addr_t effctvaddr, _Bool lock)
+uint32_t x86__mm_r32_m32_and(void *cpu, uint8_t reg, moffset32_t effctvaddr, _Bool lock)
 {
     if (lock)
         return x86__mm_rX_immX_and(cpu, reg, x86_atomic_rdmem32(cpu, effctvaddr), 32);
@@ -557,9 +557,9 @@ uint32_t x86__mm_r32_m32_and(void *cpu, uint8_t reg, addr_t effctvaddr, _Bool lo
 
 
 // CALL
-static void x86__mm_abs_call(void *, addr_t);
+static void x86__mm_abs_call(void *, moffset32_t);
 
-static void x86__mm_abs_call(void *cpu, addr_t absladdr)
+static void x86__mm_abs_call(void *cpu, moffset32_t absladdr)
 {
     x86__mm_r32_push(cpu, EIP);
 
@@ -588,12 +588,12 @@ void x86__mm_r32_call(void *cpu, uint8_t reg)
     x86__mm_abs_call(cpu, x86_rdreg32(cpu, reg));
 }
 
-void x86__mm_m16_call(void *cpu, addr_t effctvaddr)
+void x86__mm_m16_call(void *cpu, moffset32_t effctvaddr)
 {
     x86__mm_abs_call(cpu, x86_rdmem16(cpu, effctvaddr));
 }
 
-void x86__mm_m32_call(void *cpu, addr_t effctvaddr)
+void x86__mm_m32_call(void *cpu, moffset32_t effctvaddr)
 {
     x86__mm_abs_call(cpu, x86_rdmem32(cpu, effctvaddr));
 }
@@ -630,32 +630,32 @@ void x86__mm_r32_r32_mov(void *cpu, uint8_t dest, uint8_t src)
     x86_wrreg32(cpu, dest, x86_rdreg32(cpu, src));
 }
 
-void x86__mm_m8_r8_mov(void *cpu, addr_t effctvaddr, uint8_t src)
+void x86__mm_m8_r8_mov(void *cpu, moffset32_t effctvaddr, uint8_t src)
 {
     x86_wrmem8(cpu, effctvaddr, x86_rdreg8(cpu, src));
 }
 
-void x86__mm_m16_r16_mov(void *cpu, addr_t dest, uint8_t src)
+void x86__mm_m16_r16_mov(void *cpu, moffset32_t dest, uint8_t src)
 {
     x86_wrmem16(cpu, dest, x86_rdreg16(cpu, src));
 }
 
-void x86__mm_m32_r32_mov(void *cpu, addr_t dest, uint8_t src)
+void x86__mm_m32_r32_mov(void *cpu, moffset32_t dest, uint8_t src)
 {
     x86_wrmem32(cpu, dest, x86_rdreg32(cpu, src));
 }
 
-void x86__mm_r8_m8_mov(void *cpu, uint8_t dest, addr_t src)
+void x86__mm_r8_m8_mov(void *cpu, uint8_t dest, moffset32_t src)
 {
     x86_wrreg8(cpu, dest, x86_rdmem8(cpu, src));
 }
 
-void x86__mm_r16_m16_mov(void *cpu, uint8_t dest, addr_t src)
+void x86__mm_r16_m16_mov(void *cpu, uint8_t dest, moffset32_t src)
 {
     x86_wrreg16(cpu, dest, x86_rdmem16(cpu, src));
 }
 
-void x86__mm_r32_m32_mov(void *cpu, uint8_t dest, addr_t src)
+void x86__mm_r32_m32_mov(void *cpu, uint8_t dest, moffset32_t src)
 {
     x86_wrreg32(cpu, dest, x86_rdmem32(cpu, src));
 }
@@ -665,7 +665,7 @@ void x86__mm_r16_sreg_mov(void *cpu, uint8_t dest, uint8_t src)
     x86_wrreg16(cpu, dest, x86_rdsreg(cpu, src));
 }
 
-void x86__mm_m16_sreg_mov(void *cpu, addr_t dest, uint8_t src)
+void x86__mm_m16_sreg_mov(void *cpu, moffset32_t dest, uint8_t src)
 {
     x86_wrmem16(cpu, dest, x86_rdsreg(cpu, src));
 }
@@ -675,7 +675,7 @@ void x86__mm_sreg_r16_mov(void *cpu, uint8_t dest, uint8_t src)
     x86_wrsreg(cpu, dest, x86_rdreg16(cpu, src));
 }
 
-void x86__mm_sreg_m16_mov(void *cpu, uint8_t dest, addr_t src)
+void x86__mm_sreg_m16_mov(void *cpu, uint8_t dest, moffset32_t src)
 {
     x86_wrsreg(cpu, dest, x86_rdmem16(cpu, src));
 }

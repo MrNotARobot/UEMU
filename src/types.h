@@ -26,14 +26,19 @@
 #include <stddef.h>
 #include <sys/types.h>
 
-typedef uint64_t addr_t;
-
 typedef uint16_t reg16_t;
 typedef uint32_t reg32_t;
 
+typedef uint32_t moffset32_t;
+typedef uint16_t moffset16_t;
+
+#define moffset16(addr) ((addr) & 0x0000FFFF)
+
+
+
 struct loadable_segment {
-    addr_t s_offset; // offset from the beggining of the file
-    addr_t s_vaddr; // the virtual address of the segment in memory
+    moffset32_t s_offset; // offset from the beggining of the file
+    moffset32_t s_vaddr; // the virtual address of the segment in memory
     uint64_t s_filesz;  // the number of bytes in the file
     uint64_t s_memsz;  // the number of bytes in memory
     uint32_t s_perms;   // the permissions of the segment in memory

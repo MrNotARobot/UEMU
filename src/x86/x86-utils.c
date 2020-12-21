@@ -96,6 +96,18 @@ inline uint8_t reg8to32(uint8_t reg)
     return reg32;
 }
 
+inline uint8_t reg32to8(uint8_t reg)
+{
+    switch (reg) {
+        case EAX: return AL; break;
+        case ECX: return CL; break;
+        case EDX: return DL; break;
+        case EBX:  return BL; break;
+        default: break;
+    }
+    return 0;
+}
+
 inline uint8_t effctvregister(uint8_t modrm)
 {
     int reg = 0;
@@ -144,12 +156,12 @@ inline const char *stringfyregister(uint8_t regstr, uint8_t size)
 }
 
 // translate a Mod/RM byte + optional immediate into an effective address
-addr_t x86_effctvaddr16(void *cpu, uint8_t modrm, uint32_t imm)
+moffset32_t x86_effctvaddr16(void *cpu, uint8_t modrm, uint32_t imm)
 {
     ASSERT(cpu != NULL);
     uint8_t mod = mod(modrm);
     uint8_t rm = rm(modrm);
-    addr_t effctvaddr = 0;
+    moffset32_t effctvaddr = 0;
 
     if (mod == 0) {
         switch (rm) {
@@ -179,12 +191,12 @@ addr_t x86_effctvaddr16(void *cpu, uint8_t modrm, uint32_t imm)
 }
 
 // translate a Mod/RM byte + optional immediate/SIB into an effective address
-addr_t x86_effctvaddr32(void *cpu, uint8_t modrm, uint8_t sib, uint32_t imm)
+moffset32_t x86_effctvaddr32(void *cpu, uint8_t modrm, uint8_t sib, uint32_t imm)
 {
     ASSERT(cpu != NULL);
     uint8_t mod = mod(modrm);
     uint8_t rm = rm(modrm);
-    addr_t effctvaddr = 0;
+    moffset32_t effctvaddr = 0;
     _Bool use_sib = 0;
     uint8_t ss_factor = sibss(sib);
     uint8_t index = sibindex(sib);

@@ -2,7 +2,8 @@ set(SRCS
     memory.c
     system.c
     generic-elf.c
-    basicmmu.c
+    sym-resolver.c
+    x86/x86-mmu.c
     x86/x86-utils.c
     x86/general.c
     x86/opcodes.c
@@ -15,5 +16,4 @@ set(SRCS
 
 add_executable(uemu ${SRCS})
 
-target_compile_options(uemu PRIVATE -g -Wall -Wextra -Werror)
-target_compile_options(uemu PRIVATE -Os)
+target_compile_options(uemu PRIVATE -O3 -g -Wall -Wextra -Werror)

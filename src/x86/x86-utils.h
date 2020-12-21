@@ -22,7 +22,7 @@
 #ifndef X86_UTILS_H
 #define X86_UTILS_H
 
-#include "../types.h"
+#include "x86-mmu.h"
 
 enum x86Registers {
     EAX = 0, AX = EAX,
@@ -75,6 +75,8 @@ enum x86SegmentRegisters {
 _Bool reg8_islsb(uint8_t);
 // translate 8-bit registers into their 32-bit counterparts
 uint8_t reg8to32(uint8_t);
+// translate 32-bit registers into their 8-bit counterparts
+uint8_t reg32to8(uint8_t);
 // get the register index referenced by the Mod/RM when Mod == 3
 uint8_t effctvregister(uint8_t);
 // returns a read-only string representing the X-bit register
@@ -91,7 +93,7 @@ uint8_t displacement32(uint8_t);
 // calculates the effective address
 // example:
 //      x86_effctvaddrX(cpu, modrm, sib, imm1)
-addr_t x86_effctvaddr16(void *, uint8_t, uint32_t);
-addr_t x86_effctvaddr32(void *, uint8_t, uint8_t, uint32_t);
+moffset32_t x86_effctvaddr16(void *, uint8_t, uint32_t);
+moffset32_t x86_effctvaddr32(void *, uint8_t, uint8_t, uint32_t);
 
 #endif /* X86_UTILS_H */

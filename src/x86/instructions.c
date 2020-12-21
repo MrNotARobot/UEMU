@@ -231,7 +231,7 @@ void x86_aeskeygenassist(void *cpu, struct exec_data data)
 
 void x86_mm_and(void *cpu, struct exec_data data)
 {
-    addr_t effctvaddr;
+    moffset32_t effctvaddr;
 
     x86_clearflag(cpu, OF);
     x86_clearflag(cpu, CF);
@@ -569,7 +569,7 @@ void x86_bts(void *cpu, struct exec_data data)
 
 void x86_mm_call(void *cpu, struct exec_data data)
 {
-    addr_t effctvaddr;
+    moffset32_t effctvaddr;
 
     if (data.lock)
         x86_raise_exception(cpu, INT_UD);
@@ -2586,7 +2586,7 @@ void x86_monitor(void *cpu, struct exec_data data)
 
 void x86_mm_mov(void *cpu, struct exec_data data)
 {
-    addr_t effctvaddr = 0;
+    moffset32_t effctvaddr = 0;
     int reg_dest = 0;
     _Bool r8imm8 = 0, rXimmX = 0;
     if (data.lock)
@@ -3920,7 +3920,7 @@ void x86_pmuludq(void *cpu, struct exec_data data)
 
 void x86_mm_pop(void *cpu, struct exec_data data)
 {
-    addr_t effctvaddr = 0;
+    moffset32_t effctvaddr = 0;
     int reg_dest = 0;
     _Bool is_sreg = 0;
 
@@ -4350,7 +4350,7 @@ void x86_punpcklqdq(void *cpu, struct exec_data data)
 
 void x86_mm_push(void *cpu, struct exec_data data)
 {
-    addr_t effctvaddr;
+    moffset32_t effctvaddr;
     uint8_t reg = 0;
     uint8_t sreg = 0;
     _Bool  is_sreg = 0, is_reg = 0;
@@ -5331,7 +5331,7 @@ void x86_xlat(void *cpu, struct exec_data data)
 
 void x86_mm_xor(void *cpu, struct exec_data data)
 {
-    addr_t effctvaddr;
+    moffset32_t effctvaddr;
 
     x86_clearflag(cpu, OF);
     x86_clearflag(cpu, CF);

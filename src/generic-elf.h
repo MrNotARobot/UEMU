@@ -31,7 +31,7 @@
 
 typedef struct {
     char *s_name;
-    addr_t s_value;
+    moffset32_t s_value;
     off_t s_strtab;
     uint32_t s_strtabidx;
     size_t s_size;
@@ -39,7 +39,7 @@ typedef struct {
 
 typedef struct {
     struct loadable_segment *g_loadable;
-    addr_t g_entryp;
+    moffset32_t g_entryp;
     uint16_t g_nloadable;
     uint16_t g_machine; // the architecture of the file. See elf.e_machine in elf(5) for values.
     char *g_name;
@@ -74,6 +74,6 @@ void g_elf_unload(GenericELF *);
 
 ELF_Sym g_elf_getsym(GenericELF *, size_t);
 const char *g_elf_getsymbol(GenericELF *, size_t);
-const char *g_elf_lookup(GenericELF *, addr_t);
+const char *g_elf_lookup(GenericELF *, moffset32_t);
 
 #endif /* GENERIC_ELF.H */

@@ -23,19 +23,18 @@
 #define DISASSEMBLER_H
 
 #include "instructions.h"
-#include "../types.h"
-#include "../basicmmu.h"
+#include "x86-mmu.h"
 
 enum x86DecoderFlags {
     STOP_ON_RET
 };
 
 // decodes the bytes from the given buffer and returns a instruction ready for execution
-struct instruction x86_decode(BasicMMU *, addr_t);
+struct instruction x86_decode(x86MMU *, moffset32_t);
 // finds the last instruction before the given address
-addr_t x86_decodeuntil(BasicMMU *, addr_t, addr_t);
+moffset32_t x86_decodeuntil(x86MMU *, moffset32_t, moffset32_t);
 // find the target address of a call
-addr_t x86_findcalltarget(void *cpu, struct exec_data data);
+moffset32_t x86_findcalltarget(void *cpu, struct exec_data data);
 char *x86_disassemble(struct instruction);
 
 #endif /* DISASSEMBLER_H */

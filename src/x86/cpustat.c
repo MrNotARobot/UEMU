@@ -28,20 +28,22 @@
 #include "../system.h"
 #include "../memory.h"
 #include "../generic-elf.h"
+#include "../sym-resolver.h"
 #include "disassembler.h"
 #include "cpustat.h"
 #include "cpu.h"
 
 static void print_register(void *, uint8_t);
-static char *getptrcontent(void *, addr_t);
-static char *disassembleptr(void *, addr_t);
+static char *getptrcontent(void *, moffset32_t);
+static char *add_call_target_to_instruction(moffset32_t, struct symbol_lookup_record, char *);
+static char *disassembleptr(void *, moffset32_t);
 static void print_eflags(void *);
 
 static size_t conf_x86_cpustat_callstack_size = 10;
 static const char *conf_x86_cpustat_register_color = "\033[1;34m";
 static const char *conf_x86_cpustat_code_color = "\033[1;31m";
 static const char *conf_x86_cpustat_instruction_color = "\033[1;90m";
-static const char *conf_x86_cpustat_data_color = "\033[1;33m";
+static const char *conf_x86_cpustat_data_color = "\033[1;35m";
 static const char *conf_x86_cpustat_stack_color = "\033[1;33m";
 static const char *conf_x86_cpustat_arrow_right = "\033[0m\033[1m ─▶ \033[1m";
 static const char *conf_x86_cpustat_arrow_left = "\033[0m\033[1m ◀─ \033[1m";
@@ -60,9 +62,9 @@ static void print_register(void *cpu, uint8_t reg)
     if (reg == EIP)
         value = x86_cpustat_query(cpu, STAT_EIP);
 
-    if (b_mmu_isdataptr(x86_mmu(cpu), value)) {
+    if (mmu_isdataptr(x86_mmu(cpu), value)) {
         content = getptrcontent(cpu, value);
-    } else if (b_mmu_iscodeptr(x86_mmu(cpu), value)) {
+    } else if (mmu_iscodeptr(x86_mmu(cpu), value)) {
         content = disassembleptr(cpu, value);
     } else {
         content = int2hexstr(value, 8);
@@ -73,11 +75,11 @@ static void print_register(void *cpu, uint8_t reg)
     xfree(content);
 }
 
-static char *getptrcontent(void *cpu, addr_t effctvaddr)
+static char *getptrcontent(void *cpu, moffset32_t effctvaddr)
 {
     static char *s = NULL;
     size_t size;
-    addr_t ptr = effctvaddr;
+    moffset32_t ptr = effctvaddr;
     char *ptrstr = int2hexstr(ptr, 8);
     size_t nptrs = 1;
     const char *data_color = conf_x86_cpustat_data_color;
@@ -86,7 +88,6 @@ static char *getptrcontent(void *cpu, addr_t effctvaddr)
 
     if (effctvaddr >= x86_rdreg32(cpu, ESP) && effctvaddr < x86_cpustat_query(cpu, STAT_STACKTOP))
         data_color = conf_x86_cpustat_stack_color;
-
 
     size = strlen(data_color) + strlen(ptrstr) + strlen("\033[0m");
     s = xcalloc(size + 1, sizeof(*s));
@@ -98,9 +99,9 @@ static char *getptrcontent(void *cpu, addr_t effctvaddr)
     while (1) {
         ptr = x86_rdmem32(cpu, ptr);
 
-        if (b_mmu_isdataptr(x86_mmu(cpu), ptr)) {
-            ptrstr = int2hexstr(ptr, 8);
-            size_t catsize = strlen(arrow_r) + strlen(data_color) + strlen(ptrstr) + strlen("\033[0m");
+        // print a address
+        if (mmu_isdataptr(x86_mmu(cpu), ptr)) {
+            size_t catsize;
             if (nptrs == conf_x86_cpustat_maxptrs) {
                 catsize = strlen(arrow_r) + strlen("...") + strlen("\033[0m");
                 s = xreallocarray(s, size + catsize + 1, sizeof(*s));
@@ -108,6 +109,8 @@ static char *getptrcontent(void *cpu, addr_t effctvaddr)
                 coolstrcat(s, 3, arrow_r, "...", "\033[0m");
                 break;
             }
+            ptrstr = int2hexstr(ptr, 8);
+            catsize = strlen(arrow_r) + strlen(data_color) + strlen(ptrstr) + strlen("\033[0m");
 
             s = xreallocarray(s, size + catsize + 1, sizeof(*s));
             size += catsize;
@@ -118,10 +121,10 @@ static char *getptrcontent(void *cpu, addr_t effctvaddr)
             nptrs++;
         }
 
-        if (b_mmu_isdataptr(x86_mmu(cpu), ptr) && isprint(x86_rdmem8(cpu, ptr))) {
-            // try and see if there is a string
-            // TODO: internationalization! change this to use utf-8
-            const char *str = (const char *)b_mmu_getptr(x86_mmu(cpu), ptr);
+        // try and see if there is a string
+        if (mmu_isdataptr(x86_mmu(cpu), ptr) && isprint(x86_rdmem8(cpu, ptr))) {
+            // TODO: internationalization! change this to check for utf-8
+            const char *str = (const char *)mmu_getptr(x86_mmu(cpu), ptr);
             size_t strsz = strlen(str);
             size_t catsize;
 
@@ -166,73 +169,66 @@ static char *getptrcontent(void *cpu, addr_t effctvaddr)
     return s;
 }
 
-static char *disassembleptr(void *cpu, addr_t effctvaddr)
+static char *add_call_target_to_instruction(moffset32_t target, struct symbol_lookup_record func, char *instruction)
 {
-    const func_rangemap_t *func = b_mmu_findfunction(x86_mmu(cpu), effctvaddr);
+    char *relative = NULL;
+    char *s;
+
+    if (target != func.sl_start) {
+        relative = int2hexstr(target - func.sl_start, 2);
+        s = strcatall(6, instruction, " <", func.sl_name, "+", relative, ">");
+    } else {
+        s = strcatall(4, instruction, " <", func.sl_name, ">");
+    }
+
+    xfree(relative);
+    return s;
+}
+
+static char *disassembleptr(void *cpu, moffset32_t effctvaddr)
+{
+    struct symbol_lookup_record func = sr_lookup(x86_resolver(cpu), effctvaddr);
     struct instruction ins;
     char *s = NULL;
     char *functrel = NULL;
     char *addrstr;
     char *disasstr;
     char *opcodestr;
-    const char *symbol;
-    size_t size;
     const char *arrow_l = conf_x86_cpustat_arrow_left;
     const char *inscolor = conf_x86_cpustat_instruction_color;
     const char *codecolor = conf_x86_cpustat_code_color;
 
-    if (func) {
-        addrstr = int2hexstr(effctvaddr, 8);
-        if (effctvaddr - func->fr_start)
-            functrel = int2hexstr(effctvaddr - func->fr_start, 0);
+    // it will create a string in this format:  0xdeadbeef <main+0x123> ◀- 0x5f pop EDI
+    if (func.sl_start) {
 
+        addrstr = int2hexstr(effctvaddr, 8);
+
+        // do we add the offset?
+        if (effctvaddr - func.sl_start)
+            functrel = int2hexstr(effctvaddr - func.sl_start, 0);
+
+        // get the instruction
         ins = x86_decode(x86_mmu(cpu), effctvaddr);
         opcodestr = int2hexstr(ins.data.opc, 2);
 
+        // disassemble the instruction
         disasstr = x86_disassemble(ins);
-        symbol = g_elf_lookup(x86_elf(cpu), func->fr_start);
 
         // add the name of the called function
         if (strcmp(ins.name, "CALL") == 0) {
-            addr_t calladdress = x86_findcalltarget(cpu, ins.data);
-            const func_rangemap_t *func = b_mmu_findfunction(x86_mmu(cpu), calladdress);
+            moffset32_t calladdress = x86_findcalltarget(cpu, ins.data);
 
-            if (func) {
-                char *temp = disasstr;
-                const char *sym = g_elf_getsymbol(x86_elf(cpu), func->fr_name);
-                char *relative;
-                size_t sz;
-
-                if (calladdress != func->fr_start) {
-                    relative = int2hexstr(calladdress - func->fr_start, 2);
-                    sz = strlen(temp) + 2 + strlen(sym) + 1 + strlen(relative) + 1;
-                    disasstr = xcalloc(sz + 1, sizeof(disasstr));
-
-                    coolstrcat(disasstr, 6, temp, " <", sym, "+", relative, ">");
-                    xfree(relative);
-                } else {
-                    sz = strlen(temp) + 1 + strlen(sym) + 1;
-                    disasstr = xcalloc(sz + 1, sizeof(disasstr));
-                    coolstrcat(disasstr, 4, temp, " <", sym, ">");
-                }
-
-                xfree(temp);
-            }
-        }
-
-        if (functrel) {
-            size = strlen(codecolor) + strlen(addrstr) + 2 + strlen(symbol) + 1 + strlen(functrel) + 1 + strlen(arrow_l) + strlen(inscolor) + strlen(opcodestr) + 1 + strlen(disasstr);
-
-            s = xcalloc(size + 1, sizeof(*s));
-            coolstrcat(s, 12, codecolor, addrstr, " <", symbol, "+", functrel, ">", arrow_l, inscolor, opcodestr, " ", disasstr);
-        } else {
-            size = strlen(codecolor) + strlen(addrstr) + 2 + strlen(symbol) + 1 + strlen(arrow_l) + strlen(inscolor) + strlen(opcodestr) + 1 + strlen(disasstr);
-            s = xcalloc(size + 1, sizeof(*s));
-            coolstrcat(s, 10, codecolor, addrstr, " <", symbol, ">", arrow_l, inscolor, opcodestr, " ", disasstr);
+            char *temp = add_call_target_to_instruction(calladdress, sr_lookup(x86_resolver(cpu), calladdress), disasstr);
+            xfree(disasstr);
+            disasstr = temp;
         }
 
         if (functrel)
-            xfree(functrel);
+            s = strcatall(13, codecolor, addrstr, " <", func.sl_name, "+", functrel, ">", arrow_l, inscolor, opcodestr, " ", disasstr, "\033[0m");
+        else
+            s = strcatall(11, codecolor, addrstr, " <", func.sl_name, ">", arrow_l, inscolor, opcodestr, " ", disasstr, "\033[0m");
+
+        xfree(functrel);
         xfree(addrstr);
         xfree(disasstr);
         xfree(opcodestr);
@@ -370,7 +366,7 @@ inline void x86_cpustat_set(void *cpu, int item, uint64_t value)
             x86_cpustat(cpu)->eip = (reg32_t)value;
             break;
         case STAT_STACKTOP:
-            x86_cpustat(cpu)->stacktop = (addr_t) value;
+            x86_cpustat(cpu)->stacktop = (moffset32_t) value;
             break;
         case STAT_CALLSTACKSZ:
             x86_cpustat(cpu)->callstacksz = (size_t) value;
@@ -410,13 +406,13 @@ void x86_cpustat_init(void *cpu)
     x86_cpustat(cpu)->callstacksz = conf_x86_cpustat_callstack_size;
 }
 
-void x86_cpustat_push_callstack(void *cpu, addr_t faddr)
+void x86_cpustat_push_callstack(void *cpu, moffset32_t faddr)
 {
     ASSERT(cpu != NULL);
     size_t i = x86_cpustat(cpu)->callstacktop;
     callstack_record_t *prev = &x86_cpustat(cpu)->callstack[i];
     callstack_record_t *new;
-    const func_rangemap_t *func;
+    struct symbol_lookup_record func;
     static _Bool first_call = 1;
 
     // we reached the top
@@ -426,12 +422,12 @@ void x86_cpustat_push_callstack(void *cpu, addr_t faddr)
     // set the previous record value to where it will begin once returned
     prev->f_rel = x86_rdreg32(cpu, EIP) - prev->f_val;
 
-    func = b_mmu_findfunction(x86_mmu(cpu), faddr);
+    func = sr_lookup(x86_resolver(cpu), faddr);
     new = &x86_cpustat(cpu)->callstack[i+1];
 
     new->f_rel = 0;
-    new->f_val = func->fr_start;
-    new->f_sym = g_elf_getsymbol(x86_elf(cpu), func->fr_start);
+    new->f_val = func.sl_start;
+    new->f_sym = func.sl_name;
 
     if (!first_call)
         x86_cpustat(cpu)->callstacktop += 1;
@@ -456,7 +452,7 @@ inline void x86_cpustat_update_callstack(void *cpu)
     record->f_rel = x86_rdreg32(cpu, EIP) - record->f_val - x86_cpustat(cpu)->instr.size;
 }
 
-inline void c_86_cpustat_set_current_op(void *cpu, struct instruction op)
+inline void x86_cpustat_set_current_op(void *cpu, struct instruction op)
 {
     x86_cpustat(cpu)->instr = op;
 }

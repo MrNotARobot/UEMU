@@ -338,10 +338,9 @@ const char *g_elf_getsymbol(GenericELF *g_elf, size_t idx)
 
 
 // lookup a function at the given address
-const char *g_elf_lookup(GenericELF *g_elf, addr_t faddr)
+const char *g_elf_lookup(GenericELF *g_elf, moffset32_t faddr)
 {
     ASSERT(g_elf != NULL);
-    // TODO: optimize this lookup function, use a hash table
 
     for (size_t i = 0; i < g_elf->g_symtabsz; i++) {
         if (faddr == g_elf->g_symtab[i].s_value) {

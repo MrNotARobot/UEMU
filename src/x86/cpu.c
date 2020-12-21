@@ -31,8 +31,8 @@
 #include "../memory.h"
 #include "disassembler.h"
 
-static uint32_t rdmemx(x86CPU *cpu, addr_t effctvaddr, int size);
-static void wrmemx(x86CPU *cpu, addr_t effctvaddr, uint32_t src, int size);
+static uint32_t rdmemx(x86CPU *cpu, moffset32_t effctvaddr, int size);
+static void wrmemx(x86CPU *cpu, moffset32_t effctvaddr, uint32_t src, int size);
 static void fetch(x86CPU *, struct instruction *);
 static void build_environment(x86CPU *, int, char **, char **);
 
@@ -41,10 +41,11 @@ static void build_environment(x86CPU *, int, char **, char **);
 //
 void x86_startcpu(x86CPU *cpu)
 {
-    ASSERT(cpu != NULL);
+    if (!cpu)
+        return;
 
     x86_init_opcode_table();
-    b_mmu_init(&cpu->mmu);
+    mmu_init(&cpu->mmu);
     x86_cpustat_init(cpu);
 
     cpu->EAX = 0; cpu->ECX = 0; cpu->EDX = 0; cpu->EBX = 0; cpu->ESI = 0;
@@ -73,49 +74,57 @@ void x86_startcpu(x86CPU *cpu)
 
 void x86_stopcpu(x86CPU *cpu)
 {
-    ASSERT(cpu != NULL);
+    if (!cpu)
+        return;
 
     x86_free_opcode_table();
+    sr_closecache(x86_resolver(cpu));
 
-    if (cpu->executable.g_name)   // if we have an executable, then free it
-        g_elf_unload(&cpu->executable);
-    b_mmu_release_recs(&cpu->mmu);
+    g_elf_unload(&cpu->executable);
+    mmu_unloadall(&cpu->mmu);
 
     xfree(cpu->cpustat.callstack);
     xfree(cpu);
 }
 
 // exception handling
-static addr_t faulty_addr = 0;
+static moffset32_t faulty_addr = 0;
 static const char *errstr = NULL;
 
 void x86_raise_exception(x86CPU *cpu, int exct)
 {
-    ASSERT(cpu != NULL);
+    reg32_t saved_eip;
 
+    if (!cpu)
+        return;
+
+    saved_eip = x86_rdreg32(cpu, EIP);
+    x86_stopcpu(cpu);
     switch (exct) {
         case INT_UD:
-            x86_stopcpu(cpu);
             if (errstr) {
-                s_error(1, "emulator: Invalid Instruction at 0x%08x (%s)", cpu->EIP, errstr);
+                s_error(1, "emulator: Invalid Instruction at 0x%08x (%s)", saved_eip, errstr);
             } else {
-                s_error(1, "emulator: Invalid Instruction at 0x%08x", cpu->EIP);
+                s_error(1, "emulator: Invalid Instruction at 0x%08x", saved_eip);
             }
+            break;
         case INT_PF:
-            x86_stopcpu(cpu);
             if (errstr) {
                 s_error(1, "emulator: Page Fault (%s)", errstr);
             } else {
-                s_error(1, "emulator: Page Fault at 0x%08x", (uint32_t)faulty_addr);
+                s_error(1, "emulator: Page Fault at 0x%08x", faulty_addr);
             }
+            break;
         default:
             break;
     }
 }
 
-void x86_raise_exception_d(x86CPU *cpu, int exct, addr_t fault_addr, const char *desc)
+void x86_raise_exception_d(x86CPU *cpu, int exct, moffset32_t fault_addr, const char *desc)
 {
-    ASSERT(cpu != NULL);
+
+    if (!cpu)
+        return;
 
     faulty_addr = fault_addr;
     errstr = desc;
@@ -126,113 +135,117 @@ void x86_raise_exception_d(x86CPU *cpu, int exct, addr_t fault_addr, const char 
 
 
 
-static uint32_t rdmemx(x86CPU *cpu, addr_t effctvaddr, int size)
+static uint32_t rdmemx(x86CPU *cpu, moffset32_t effctvaddr, int size)
 {
-    ASSERT(cpu != NULL);
     uint32_t bytes = 0;
+
+    if (!cpu)
+        return 0;
 
     switch (size) {
         case 8:
-            bytes = b_mmu_read8(&cpu->mmu, effctvaddr);
+            bytes = mmu_read8(&cpu->mmu, effctvaddr);
             break;
         case 16:
-            bytes = b_mmu_read16(&cpu->mmu, effctvaddr);
+            bytes = mmu_read16(&cpu->mmu, effctvaddr);
             break;
         case 32:
-            bytes = b_mmu_read32(&cpu->mmu, effctvaddr);
+            bytes = mmu_read32(&cpu->mmu, effctvaddr);
             break;
     }
 
-    if (B_mmu_error(&cpu->mmu)) {
-        x86_raise_exception_d(cpu, INT_PF, effctvaddr, B_mmu_errstr(&cpu->mmu));
+    if (mmu_error(&cpu->mmu)) {
+        x86_raise_exception_d(cpu, INT_PF, effctvaddr, mmu_errstr(&cpu->mmu));
     }
 
     return bytes;
 }
 
-static void wrmemx(x86CPU *cpu, addr_t effctvaddr, uint32_t src, int size)
+static void wrmemx(x86CPU *cpu, moffset32_t effctvaddr, uint32_t src, int size)
 {
-    ASSERT(cpu != NULL);
+    if (!cpu)
+        return;
 
     switch (size) {
         case 8:
-            b_mmu_write8(&cpu->mmu, src, effctvaddr);
+            mmu_write8(&cpu->mmu, src, effctvaddr);
             break;
         case 16:
-            b_mmu_write16(&cpu->mmu, src, effctvaddr);
+            mmu_write16(&cpu->mmu, src, effctvaddr);
             break;
         case 32:
-            b_mmu_write32(&cpu->mmu, src, effctvaddr);
+            mmu_write32(&cpu->mmu, src, effctvaddr);
             break;
     }
 
-    if (B_mmu_error(&cpu->mmu))
-        x86_raise_exception_d(cpu, INT_PF, effctvaddr, B_mmu_errstr(&cpu->mmu));
+    if (mmu_error(&cpu->mmu))
+        x86_raise_exception_d(cpu, INT_PF, effctvaddr, mmu_errstr(&cpu->mmu));
 }
 
 // memory reading/writing
-uint8_t x86_rdmem8(x86CPU *cpu, addr_t effctvaddr)
+uint8_t x86_rdmem8(x86CPU *cpu, moffset32_t effctvaddr)
 {
     return rdmemx(cpu, effctvaddr, 8);
 }
-uint16_t x86_rdmem16(x86CPU *cpu, addr_t effctvaddr)
+uint16_t x86_rdmem16(x86CPU *cpu, moffset32_t effctvaddr)
 {
     return rdmemx(cpu, effctvaddr, 16);
 }
-uint32_t x86_rdmem32(x86CPU *cpu, addr_t effctvaddr)
+uint32_t x86_rdmem32(x86CPU *cpu, moffset32_t effctvaddr)
 {
     return rdmemx(cpu, effctvaddr, 32);
 }
 
-void x86_wrmem8(x86CPU *cpu, addr_t effctvaddr, uint8_t byte)
+void x86_wrmem8(x86CPU *cpu, moffset32_t effctvaddr, uint8_t byte)
 {
     wrmemx(cpu, effctvaddr, byte, 8);
 }
 
-void x86_wrmem16(x86CPU *cpu, addr_t effctvaddr, uint16_t bytes)
+void x86_wrmem16(x86CPU *cpu, moffset32_t effctvaddr, uint16_t bytes)
 {
     wrmemx(cpu, effctvaddr, bytes, 16);
 }
 
-void x86_wrmem32(x86CPU * cpu, addr_t effctvaddr, uint32_t bytes)
+void x86_wrmem32(x86CPU * cpu, moffset32_t effctvaddr, uint32_t bytes)
 {
     wrmemx(cpu, effctvaddr, bytes, 32);
 }
 
 // the atomic versions will be left to be worked on when we start to support processes and threads
-uint8_t x86_atomic_rdmem8(x86CPU *cpu, addr_t effctvaddr)
+uint8_t x86_atomic_rdmem8(x86CPU *cpu, moffset32_t effctvaddr)
 {
     return rdmemx(cpu, effctvaddr, 8);
 }
 
-uint16_t x86_atomic_rdmem16(x86CPU *cpu, addr_t effctvaddr)
+uint16_t x86_atomic_rdmem16(x86CPU *cpu, moffset32_t effctvaddr)
 {
     return rdmemx(cpu, effctvaddr, 16);
 }
 
-uint32_t x86_atomic_rdmem32(x86CPU *cpu, addr_t effctvaddr)
+uint32_t x86_atomic_rdmem32(x86CPU *cpu, moffset32_t effctvaddr)
 {
     return rdmemx(cpu, effctvaddr, 32);
 }
 
-void x86_atomic_wrmem8(x86CPU *cpu, addr_t effctvaddr, uint8_t byte)
+void x86_atomic_wrmem8(x86CPU *cpu, moffset32_t effctvaddr, uint8_t byte)
 {
     wrmemx(cpu, effctvaddr, byte, 8);
 }
 
-void x86_atomic_wrmem16(x86CPU *cpu, addr_t effctvaddr, uint16_t bytes)
+void x86_atomic_wrmem16(x86CPU *cpu, moffset32_t effctvaddr, uint16_t bytes)
 {
     wrmemx(cpu, effctvaddr, bytes, 16);
 }
 
-void x86_atomic_wrmem32(x86CPU * cpu, addr_t effctvaddr, uint32_t bytes)
+void x86_atomic_wrmem32(x86CPU * cpu, moffset32_t effctvaddr, uint32_t bytes)
 {
     wrmemx(cpu, effctvaddr, bytes, 32);
 }
 
-void x86_wrseq(x86CPU *cpu, addr_t effctvaddr, const uint8_t *buffer, size_t size)
+void x86_wrseq(x86CPU *cpu, moffset32_t effctvaddr, const uint8_t *buffer, size_t size)
 {
-    ASSERT(cpu != NULL);
+    if (!cpu)
+        return;
 
     for (size_t i = 0; i < size; i++) {
         x86_wrmem8(cpu, effctvaddr, buffer[i]);
@@ -240,9 +253,10 @@ void x86_wrseq(x86CPU *cpu, addr_t effctvaddr, const uint8_t *buffer, size_t siz
     }
 }
 
-void x86_rrseq(x86CPU *cpu, addr_t effctvaddr, uint8_t *dest, size_t size)
+void x86_rrseq(x86CPU *cpu, moffset32_t effctvaddr, uint8_t *dest, size_t size)
 {
-    ASSERT(cpu != NULL);
+    if (!cpu)
+        return;
 
     for (size_t i = 0; i < size; i++) {
         dest[i] = x86_rdmem8(cpu, effctvaddr);
@@ -255,20 +269,21 @@ void x86_rrseq(x86CPU *cpu, addr_t effctvaddr, uint8_t *dest, size_t size)
 // this will fetch the instruction and update the EIP accordingly
 static void fetch(x86CPU *cpu, struct instruction *instr)
 {
-    *instr = x86_decode(&cpu->mmu, cpu->EIP);
-    if (B_mmu_error(&cpu->mmu))
-        x86_raise_exception_d(cpu, INT_PF, cpu->EIP, B_mmu_errstr(&cpu->mmu));
+    *instr = x86_decode(x86_mmu(cpu), x86_rdreg32(cpu, EIP));
+    if (mmu_error(&cpu->mmu))
+        x86_raise_exception_d(cpu, INT_PF, x86_rdreg32(cpu, EIP), mmu_errstr(&cpu->mmu));
 
     if (instr->fail_to_fetch)
         x86_raise_exception(cpu, INT_UD);
-    cpu->EIP += instr->size;
+
+    x86_wrreg32(cpu, EIP, x86_rdreg32(cpu, EIP) + instr->size);
 }
 
 static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
 {
     size_t environsz = 0;
-    addr_t *environ_;
-    addr_t *argv_;
+    moffset32_t *environ_;
+    moffset32_t *argv_;
     uint8_t alignment = 0;
 
     if (argc == 1) {
@@ -276,7 +291,7 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
         s_error(1, "emulator: invalid argv");
     }
 
-    argc--; // we don't use argv[0] as it is the emulator
+    argc--; // we don't use argv[0]
 
     for (size_t i = 0; envp[i] != NULL; i++)
         environsz++;
@@ -286,32 +301,28 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
     // write the environment variables to the stack
     for (int i = environsz - 1; i >= 0; i--)
     {
-        size_t envsz = strlen(envp[i]);
+        size_t envsz = strlen(envp[i]) + 1;
 
-        cpu->ESP = cpu->ESP - envsz - 1;
+        x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) - envsz);
 
-        x86_wrseq(cpu, cpu->ESP, (uint8_t *)envp[i], envsz+1);
-        environ_[i] = cpu->ESP;
+        x86_wrseq(cpu, x86_rdreg32(cpu, ESP), (uint8_t *)envp[i], envsz);
+        environ_[i] = x86_rdreg32(cpu, ESP);
     }
 
     argv_ = xcalloc(argc + 1, sizeof (*argv_));
 
     // write the arguments to the stack
     for (int i = argc; i >= 1; i--) {
-        size_t argsz = strlen(argv[i]);
+        size_t argsz = strlen(argv[i]) + 1;
 
-        cpu->ESP = cpu->ESP - argsz - 1;
-        x86_wrseq(cpu, cpu->ESP, (uint8_t *)argv[i], argsz+1);
+        x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) - argsz);
 
-        argv_[i-1] = cpu->ESP;
+        x86_wrseq(cpu, cpu->ESP, (uint8_t *)argv[i], argsz);
+
+        argv_[i-1] = x86_rdreg32(cpu, ESP);
     }
 
     // align the stack
-    // +2 means that we are accounting for the index zero
-    // +4 means argc
-    // this is quite simple:
-    //      ESP - ((size of environ + argc + 2)*4) = (final ESP)
-    //      (final ESP) & 0x0000000f = number of bytes to get the stack aligned
     alignment = ((cpu->ESP & 0xfffffff0) - ((environsz + argc + 2)*4 + 4)) & 0x0000000f;
     cpu->ESP = ((cpu->ESP) & 0xfffffff0) - alignment;
 
@@ -319,24 +330,21 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
     environ_[environsz] = 0;
 
     for (int i = environsz; i >= 0; i--) {
-        cpu->ESP -= 4;
+        x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) - 4);
+
         x86_wrmem32(cpu, cpu->ESP, environ_[i]);
     }
-    cpu->environ_ = cpu->ESP;
-    s_info("%lx", cpu->environ_);
 
     // the NULL ptr at the end of argv
     argv_[argc] = 0;
 
     for (int i = argc; i >= 0; i--) {
-        cpu->ESP -= 4;
+        x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) - 4);
         x86_wrmem32(cpu, cpu->ESP, argv_[i]);
     }
 
-    cpu->argv_ = cpu->ESP;
-    cpu->argc_ = argc;
 
-    cpu->ESP -= 4;
+    x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) - 4);
     x86_wrmem32(cpu, cpu->ESP, argc);
 
     xfree(environ_);
@@ -373,21 +381,25 @@ void x86_cpu_exec(char *executable, int argc, char *argv[], char **envp)
         s_error(1, "%s", G_elf_errstr(&cpu->executable));
     }
 
+    // actually map the segments
+    mmu_mmap_loadable(&cpu->mmu, &cpu->executable);
+    if (mmu_error(&cpu->mmu)) {
+        x86_stopcpu(cpu);
+        s_error(1, "%s", mmu_errstr(&cpu->mmu));
+    }
+
+    sr_loadcache(x86_resolver(cpu), executable);
+
     // we don't need it anymore.
     xfree(executable);
-
-    // actually map the segments
-    b_mmu_mmap_loadable(&cpu->mmu, &cpu->executable);
-    if (B_mmu_error(&cpu->mmu)) {
-        x86_stopcpu(cpu);
-        s_error(1, "%s", B_mmu_errstr(&cpu->mmu));
-    }
 
     // create a stack
     if (G_elf_execstack(&cpu->executable))
         stack_flags |= B_STACKEXEC;
 
-    x86_wrreg32(cpu, ESP, b_mmu_create_stack(&cpu->mmu, stack_flags));
+    x86_wrreg32(cpu, ESP, mmu_create_stack(&cpu->mmu, stack_flags));
+
+    x86_cpustat_set(cpu, STAT_STACKTOP, x86_rdreg32(cpu, ESP));
 
     build_environment(cpu, argc, argv, envp);
 
@@ -400,7 +412,7 @@ void x86_cpu_exec(char *executable, int argc, char *argv[], char **envp)
 
         fetch(cpu, &instr);
 
-        c_86_cpustat_set_current_op(cpu, instr);
+        x86_cpustat_set_current_op(cpu, instr);
         x86_cpustat_update_callstack(cpu);
         x86_cpustat_print(cpu);
 

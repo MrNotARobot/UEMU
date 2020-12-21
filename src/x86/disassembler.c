@@ -178,7 +178,7 @@ char *x86_disassemble(struct instruction instr)
 
     if (instr.encoding == no_encoding)
         return NULL;
-    
+
     s = xcalloc(s_size, sizeof(*s));
 
     for (size_t i = 0; i < strlen(instr.name); i++)
@@ -296,7 +296,7 @@ char *x86_disassemble(struct instruction instr)
             break;
         case rm8_r8:
             arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
-            coolstrcat(s, 3, arg, ", ", stringfyregister(reg(instr.data.modrm), 8));
+            coolstrcat(s, 3, arg, ", ", stringfyregister(reg32to8(instr.data.modrm), 8));
             xfree(arg);
             break;
         case rm16_1:
@@ -407,7 +407,7 @@ char *x86_disassemble(struct instruction instr)
         return (instr); \
     } while (0)
 
-struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
+struct instruction x86_decode(x86MMU *mmu, moffset32_t eip)
 {
     struct instruction instr;
     uint8_t byte;
@@ -416,9 +416,9 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
     struct opcode op;
     struct exec_data data;
     uint8_t last_prefix = 0;
-    addr_t old_eip = eip;
+    moffset32_t old_eip = eip;
 
-    if (!b_mmu)
+    if (!mmu)
         decode_fail(instr, 0);
 
     data.ext = 0;
@@ -439,8 +439,8 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
     instr.fail_byte = 0;
 
     for (size_t isprefix = 1; isprefix != 0;) {
-        byte = b_mmu_fetch(b_mmu, eip);
-        if (B_mmu_error(b_mmu))
+        byte = mmu_fetch(mmu, eip);
+        if (mmu_error(mmu))
             decode_fail(instr, byte);
         eip += 1;
         if (x86_byteispfx(byte)) {
@@ -459,8 +459,8 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
                 data.segovr = byte2segovr(byte);
 
             last_prefix = byte;
-            byte = b_mmu_fetch(b_mmu, eip);
-            if (B_mmu_error(b_mmu))
+            byte = mmu_fetch(mmu, eip);
+            if (mmu_error(mmu))
                 decode_fail(instr, byte);
 
             eip += 1;
@@ -474,8 +474,8 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
     if (byte == 0x0F) {
         table = x86_opcode_0f_table;
 
-        byte = b_mmu_fetch(b_mmu, eip);
-        if (B_mmu_error(b_mmu))
+        byte = mmu_fetch(mmu, eip);
+        if (mmu_error(mmu))
             decode_fail(instr, byte);
         eip += 1;
 
@@ -486,8 +486,8 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
 
     // handle instructions with secondary bytes (see AAM/AAD)
     if (op.o_sec_table) {
-        byte = b_mmu_fetch(b_mmu, eip);
-        if (B_mmu_error(b_mmu))
+        byte = mmu_fetch(mmu, eip);
+        if (mmu_error(mmu))
             decode_fail(instr, byte);
 
         for (size_t i = 0; i < op.o_sec_tablesz; i++) {
@@ -502,8 +502,8 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
 
     // handle Mod/RM, SIB and opcode extensions
     if (op.o_use_rm) {
-        data.modrm = b_mmu_fetch(b_mmu, eip);
-        if (B_mmu_error(b_mmu))
+        data.modrm = mmu_fetch(mmu, eip);
+        if (mmu_error(mmu))
             decode_fail(instr, byte);
         eip += 1;
 
@@ -517,8 +517,8 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
             case 1: // MOD 01 RM 100
             case 2: // MOD 10 RM 100
                 if (rm(data.modrm) == 4) {
-                    data.sib = b_mmu_fetch(b_mmu, eip);
-                    if (B_mmu_error(b_mmu))
+                    data.sib = mmu_fetch(mmu, eip);
+                    if (mmu_error(mmu))
                         decode_fail(instr, byte);
                     eip += 1;
                 }
@@ -539,8 +539,8 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
         }
 
         if (op.o_sec_table) {
-            byte = b_mmu_fetch(b_mmu, eip);
-            if (B_mmu_error(b_mmu))
+            byte = mmu_fetch(mmu, eip);
+            if (mmu_error(mmu))
                 decode_fail(instr, byte);
 
             for (size_t i = 0; i < op.o_sec_tablesz; i++) {
@@ -588,40 +588,40 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
                 dispsz = displacement32(data.modrm);
 
             if (dispsz == 8) {
-                data.moffset = b_mmu_fetch(b_mmu, eip);
-                if (B_mmu_error(b_mmu))
+                data.moffset = mmu_fetch(mmu, eip);
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
             } else if (dispsz == 16) {
-                data.moffset = b_mmu_fetch(b_mmu, eip);
-                if (B_mmu_error(b_mmu))
+                data.moffset = mmu_fetch(mmu, eip);
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
-                data.moffset |= b_mmu_fetch(b_mmu, eip) << 8;
-                if (B_mmu_error(b_mmu))
+                data.moffset |= mmu_fetch(mmu, eip) << 8;
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
             } else if (dispsz == 32) {
-                data.moffset = b_mmu_fetch(b_mmu, eip);
-                if (B_mmu_error(b_mmu))
+                data.moffset = mmu_fetch(mmu, eip);
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
-                data.moffset |= b_mmu_fetch(b_mmu, eip) << 8;
-                if (B_mmu_error(b_mmu))
+                data.moffset |= mmu_fetch(mmu, eip) << 8;
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
-                data.moffset |= b_mmu_fetch(b_mmu, eip) << 16;
-                if (B_mmu_error(b_mmu))
+                data.moffset |= mmu_fetch(mmu, eip) << 16;
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
-                data.moffset |= b_mmu_fetch(b_mmu, eip) << 24;
-                if (B_mmu_error(b_mmu))
+                data.moffset |= mmu_fetch(mmu, eip) << 24;
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
@@ -640,8 +640,8 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
         case r32_xmm_imm8:
         case rela8:
         case xmm1_imm8:
-            data.imm1 = b_mmu_fetch(b_mmu, eip);
-            if (B_mmu_error(b_mmu))
+            data.imm1 = mmu_fetch(mmu, eip);
+            if (mmu_error(mmu))
                 decode_fail(instr, byte);
             eip += 1;
             break;
@@ -650,19 +650,19 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
             dispsz = displacement16(data.modrm);
 
             if (dispsz == 8) {
-                data.moffset = b_mmu_fetch(b_mmu, eip);
-                if (B_mmu_error(b_mmu))
+                data.moffset = mmu_fetch(mmu, eip);
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
             } else if (dispsz == 16) {
-                data.moffset = b_mmu_fetch(b_mmu, eip);
-                if (B_mmu_error(b_mmu))
+                data.moffset = mmu_fetch(mmu, eip);
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
-                data.moffset |= b_mmu_fetch(b_mmu, eip) << 8;
-                if (B_mmu_error(b_mmu))
+                data.moffset |= mmu_fetch(mmu, eip) << 8;
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
@@ -672,13 +672,13 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
         case imm16_AX:
         case AX_imm16:
         case rela16:
-            data.imm1 = b_mmu_fetch(b_mmu, eip);
-            if (B_mmu_error(b_mmu))
+            data.imm1 = mmu_fetch(mmu, eip);
+            if (mmu_error(mmu))
                 decode_fail(instr, byte);
 
             eip += 1;
-            data.imm1 |= b_mmu_fetch(b_mmu, eip) << 8;
-            if (B_mmu_error(b_mmu))
+            data.imm1 |= mmu_fetch(mmu, eip) << 8;
+            if (mmu_error(mmu))
                 decode_fail(instr, byte);
 
             eip += 1;
@@ -688,29 +688,29 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
             dispsz = displacement32(data.modrm);
 
             if (dispsz == 8) {
-                data.moffset = b_mmu_fetch(b_mmu, eip);
-                if (B_mmu_error(b_mmu))
+                data.moffset = mmu_fetch(mmu, eip);
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
             } else if (dispsz == 32) {
-                data.moffset = b_mmu_fetch(b_mmu, eip);
-                if (B_mmu_error(b_mmu))
+                data.moffset = mmu_fetch(mmu, eip);
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
-                data.moffset |= b_mmu_fetch(b_mmu, eip) << 8;
-                if (B_mmu_error(b_mmu))
+                data.moffset |= mmu_fetch(mmu, eip) << 8;
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
-                data.moffset |= b_mmu_fetch(b_mmu, eip) << 16;
-                if (B_mmu_error(b_mmu))
+                data.moffset |= mmu_fetch(mmu, eip) << 16;
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
-                data.moffset |= b_mmu_fetch(b_mmu, eip) << 24;
-                if (B_mmu_error(b_mmu))
+                data.moffset |= mmu_fetch(mmu, eip) << 24;
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
@@ -722,23 +722,23 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
         case rela32:
         case imm32:
         case imm32_eAX:
-            data.imm1 = b_mmu_fetch(b_mmu, eip);
-            if (B_mmu_error(b_mmu))
+            data.imm1 = mmu_fetch(mmu, eip);
+            if (mmu_error(mmu))
                 decode_fail(instr, byte);
 
             eip += 1;
-            data.imm1 |= b_mmu_fetch(b_mmu, eip) << 8;
-            if (B_mmu_error(b_mmu))
+            data.imm1 |= mmu_fetch(mmu, eip) << 8;
+            if (mmu_error(mmu))
                 decode_fail(instr, byte);
 
             eip += 1;
-            data.imm1 |= b_mmu_fetch(b_mmu, eip) << 16;
-            if (B_mmu_error(b_mmu))
+            data.imm1 |= mmu_fetch(mmu, eip) << 16;
+            if (mmu_error(mmu))
                 decode_fail(instr, byte);
 
             eip += 1;
-            data.imm1 |= b_mmu_fetch(b_mmu, eip) << 24;
-            if (B_mmu_error(b_mmu))
+            data.imm1 |= mmu_fetch(mmu, eip) << 24;
+            if (mmu_error(mmu))
                 decode_fail(instr, byte);
 
             eip += 1;
@@ -746,63 +746,63 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
         case rela16_32:
         case ptr16_32:
             // first 16 bytes
-            data.imm1 = b_mmu_fetch(b_mmu, eip);
-            if (B_mmu_error(b_mmu))
+            data.imm1 = mmu_fetch(mmu, eip);
+            if (mmu_error(mmu))
                 decode_fail(instr, byte);
 
             eip += 1;
-            data.imm1 |= b_mmu_fetch(b_mmu, eip) << 8;
-            if (B_mmu_error(b_mmu))
+            data.imm1 |= mmu_fetch(mmu, eip) << 8;
+            if (mmu_error(mmu))
                 decode_fail(instr, byte);
 
             eip += 1;
 
             // last four bytes
-            data.imm2 = b_mmu_fetch(b_mmu, eip);
-            if (B_mmu_error(b_mmu))
+            data.imm2 = mmu_fetch(mmu, eip);
+            if (mmu_error(mmu))
                 decode_fail(instr, byte);
 
             eip += 1;
-            data.imm2 |= b_mmu_fetch(b_mmu, eip) << 8;
-            if (B_mmu_error(b_mmu))
+            data.imm2 |= mmu_fetch(mmu, eip) << 8;
+            if (mmu_error(mmu))
                 decode_fail(instr, byte);
 
             eip += 1;
-            data.imm2 |= b_mmu_fetch(b_mmu, eip) << 16;
-            if (B_mmu_error(b_mmu))
+            data.imm2 |= mmu_fetch(mmu, eip) << 16;
+            if (mmu_error(mmu))
                 decode_fail(instr, byte);
 
             eip += 1;
-            data.imm2 |= b_mmu_fetch(b_mmu, eip) << 24;
-            if (B_mmu_error(b_mmu))
+            data.imm2 |= mmu_fetch(mmu, eip) << 24;
+            if (mmu_error(mmu))
                 decode_fail(instr, byte);
 
             eip += 1;
             break;
         case imm16_imm8:
             // fist two bytes
-            data.imm1 = b_mmu_fetch(b_mmu, eip);
-            if (B_mmu_error(b_mmu))
+            data.imm1 = mmu_fetch(mmu, eip);
+            if (mmu_error(mmu))
                 decode_fail(instr, byte);
 
             eip += 1;
-            data.imm1 |= b_mmu_fetch(b_mmu, eip) << 8;
-            if (B_mmu_error(b_mmu))
+            data.imm1 |= mmu_fetch(mmu, eip) << 8;
+            if (mmu_error(mmu))
                 decode_fail(instr, byte);
 
             eip += 1;
 
             // last byte
-            data.imm2 = b_mmu_fetch(b_mmu, eip);
-            if (B_mmu_error(b_mmu))
+            data.imm2 = mmu_fetch(mmu, eip);
+            if (mmu_error(mmu))
                 decode_fail(instr, byte);
             eip += 1;
             break;
         case bnd_sib:
         case sib_bnd:
             if (!data.sib) {
-                data.sib = b_mmu_fetch(b_mmu, eip);
-                if (B_mmu_error(b_mmu))
+                data.sib = mmu_fetch(mmu, eip);
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
                 eip += 1;
             }
@@ -880,40 +880,40 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
                 dispsz = displacement32(data.modrm);
 
             if (dispsz == 8) {
-                data.moffset = b_mmu_fetch(b_mmu, eip);
-                if (B_mmu_error(b_mmu))
+                data.moffset = mmu_fetch(mmu, eip);
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
             } else if (dispsz == 16) {
-                data.moffset = b_mmu_fetch(b_mmu, eip);
-                if (B_mmu_error(b_mmu))
+                data.moffset = mmu_fetch(mmu, eip);
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
-                data.moffset |= b_mmu_fetch(b_mmu, eip) << 8;
-                if (B_mmu_error(b_mmu))
+                data.moffset |= mmu_fetch(mmu, eip) << 8;
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
             } else if (dispsz == 32) {
-                data.moffset = b_mmu_fetch(b_mmu, eip);
-                if (B_mmu_error(b_mmu))
+                data.moffset = mmu_fetch(mmu, eip);
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
-                data.moffset |= b_mmu_fetch(b_mmu, eip) << 8;
-                if (B_mmu_error(b_mmu))
+                data.moffset |= mmu_fetch(mmu, eip) << 8;
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
-                data.moffset |= b_mmu_fetch(b_mmu, eip) << 16;
-                if (B_mmu_error(b_mmu))
+                data.moffset |= mmu_fetch(mmu, eip) << 16;
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
-                data.moffset |= b_mmu_fetch(b_mmu, eip) << 24;
-                if (B_mmu_error(b_mmu))
+                data.moffset |= mmu_fetch(mmu, eip) << 24;
+                if (mmu_error(mmu))
                     decode_fail(instr, byte);
 
                 eip += 1;
@@ -946,19 +946,19 @@ struct instruction x86_decode(BasicMMU *b_mmu, addr_t eip)
     return instr;
 }
 
-addr_t x86_decodeuntil(BasicMMU *b_mmu, addr_t eip, addr_t stop_eip)
+moffset32_t x86_decodeuntil(x86MMU *mmu, moffset32_t eip, moffset32_t stop_eip)
 {
     struct instruction instr;
-    addr_t addr = 0;
+    moffset32_t addr = 0;
 
-    if (!b_mmu || stop_eip < eip)
+    if (!mmu || stop_eip < eip)
         return 0;
 
     while (1) {
-        instr = x86_decode(b_mmu, eip);
+        instr = x86_decode(mmu, eip);
 
         if (instr.fail_to_fetch) {
-            B_mmu_clrerror(b_mmu);
+            mmu_clrerror(mmu);
             break;
         }
 
@@ -973,10 +973,10 @@ addr_t x86_decodeuntil(BasicMMU *b_mmu, addr_t eip, addr_t stop_eip)
     return addr;
 }
 
-addr_t x86_findcalltarget(void *cpu, struct exec_data data)
+moffset32_t x86_findcalltarget(void *cpu, struct exec_data data)
 {
     ASSERT(cpu != NULL);
-    addr_t effctvaddr;
+    moffset32_t effctvaddr;
 
     if (data.oprsz_pfx)
         effctvaddr = x86_effctvaddr16(cpu, data.modrm, low16(data.moffset));

@@ -27,15 +27,19 @@
 
 #include <stdint.h>
 
+#include "x86-mmu.h"
+#include "../generic-elf.h"
+#include "../sym-resolver.h"
+
+#include "x86-utils.h"
 #include "instructions.h"
 #include "cpustat.h"
-#include "../basicmmu.h"
-#include "../types.h"
-#include "x86-utils.h"
 
 typedef struct {
-    BasicMMU mmu;
+    x86MMU mmu;
     GenericELF executable;
+    sym_resolver_t resolver;
+
 
     reg32_t EAX;
     reg32_t ECX;
@@ -82,10 +86,6 @@ typedef struct {
 
     cpu_stat_t cpustat;
 
-    addr_t environ_;
-    addr_t argv_;
-    int  argc_;
-
     reg32_t *reg_table_[9];
     struct EFlags *eflags_ptr_;
     reg16_t *sreg_table_[6];
@@ -94,6 +94,7 @@ typedef struct {
 #define x86_cpustat(cpu) (&((x86CPU *)(cpu))->cpustat)
 #define x86_mmu(cpu) (&((x86CPU *)(cpu))->mmu)
 #define x86_elf(cpu) (&((x86CPU *)(cpu))->executable)
+#define x86_resolver(cpu) (&((x86CPU *)(cpu))->resolver)
 
 enum x86ExceptionsInterrupts {
         INT_UD,     // invalid instruction
@@ -107,31 +108,31 @@ enum x86ExceptionsInterrupts {
     void x86_cpu_exec(char *, int argc, char **, char **);
 
     void x86_raise_exception(x86CPU *, int);
-    void x86_raise_exception_d(x86CPU *, int, addr_t, const char *);
+    void x86_raise_exception_d(x86CPU *, int, moffset32_t, const char *);
 
     // don't use the MMU interface direcly for reading/writing (USE THESE)
-    uint8_t x86_rdmem8(x86CPU *, addr_t);
-    uint16_t x86_rdmem16(x86CPU *, addr_t);
-    uint32_t x86_rdmem32(x86CPU *, addr_t);
+    uint8_t x86_rdmem8(x86CPU *, moffset32_t);
+    uint16_t x86_rdmem16(x86CPU *, moffset32_t);
+    uint32_t x86_rdmem32(x86CPU *, moffset32_t);
 
-    void x86_wrmem8(x86CPU *, addr_t, uint8_t);
-    void x86_wrmem16(x86CPU *, addr_t, uint16_t);
-    void x86_wrmem32(x86CPU *, addr_t, uint32_t);
+    void x86_wrmem8(x86CPU *, moffset32_t, uint8_t);
+    void x86_wrmem16(x86CPU *, moffset32_t, uint16_t);
+    void x86_wrmem32(x86CPU *, moffset32_t, uint32_t);
 
-    uint8_t x86_atomic_rdmem8(x86CPU *, addr_t);
-    uint16_t x86_atomic_rdmem16(x86CPU *, addr_t);
-    uint32_t x86_atomic_rdmem32(x86CPU *, addr_t);
+    uint8_t x86_atomic_rdmem8(x86CPU *, moffset32_t);
+    uint16_t x86_atomic_rdmem16(x86CPU *, moffset32_t);
+    uint32_t x86_atomic_rdmem32(x86CPU *, moffset32_t);
 
-    void x86_atomic_wrmem8(x86CPU *, addr_t, uint8_t);
-    void x86_atomic_wrmem16(x86CPU *, addr_t, uint16_t);
-    void x86_atomic_wrmem32(x86CPU *, addr_t, uint32_t);
+    void x86_atomic_wrmem8(x86CPU *, moffset32_t, uint8_t);
+    void x86_atomic_wrmem16(x86CPU *, moffset32_t, uint16_t);
+    void x86_atomic_wrmem32(x86CPU *, moffset32_t, uint32_t);
 
     // write a sequence of bytes
-    void x86_wrseq(x86CPU *, addr_t, const uint8_t *, size_t);
+    void x86_wrseq(x86CPU *, moffset32_t, const uint8_t *, size_t);
     // read a sequence of bytes into the buffer
-    void x86_rdseq(x86CPU *, addr_t, uint8_t *, size_t);
+    void x86_rdseq(x86CPU *, moffset32_t, uint8_t *, size_t);
     // same as above but will stop if it reaches the stop byte
-    void x86_rdseq2(x86CPU *, addr_t, uint8_t *, size_t, uint8_t);
+    void x86_rdseq2(x86CPU *, moffset32_t, uint8_t *, size_t, uint8_t);
 
     // I like this function-like way of accessing the registers
     // read the 8 low/high bits

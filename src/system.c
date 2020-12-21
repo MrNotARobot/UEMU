@@ -39,7 +39,7 @@ char *find_executable(const char *name)
     char *next, *current;
     size_t path_size, name_len;
 
-    name_len = strlen(name);
+    name_len = strlen(name) + 1;
     current = path;
 
     /* this loop will check all entries but the last in PATH */
@@ -47,7 +47,7 @@ char *find_executable(const char *name)
         next++;
         path_size = next - current;
 
-        fullpath = xmalloc(path_size + name_len);
+        fullpath = xcalloc(path_size + name_len, sizeof(*fullpath));
         memset(fullpath, 0, path_size + name_len);
 
         strncpy(fullpath, current, path_size);
@@ -65,10 +65,9 @@ char *find_executable(const char *name)
 
     /* check the last entry in PATH */
     if (!fullpath) {
-        path_size = strlen(current);
+        path_size = strlen(current) + 1;
 
-        fullpath = xmalloc(path_size + name_len + 2);
-        memset(fullpath, 0, path_size + name_len + 2);
+        fullpath = xcalloc(path_size + 1 + name_len, sizeof(*fullpath));
 
         strncpy(fullpath, current, path_size);
         fullpath[path_size] = '/';
@@ -95,6 +94,28 @@ char *coolstrcat(char *dest, size_t argc, ...)
 
     return dest;
 }
+
+char *strcatall(size_t argc, ...)
+{
+    va_list ap;
+    char *s;
+    size_t size = 0;
+
+    va_start(ap, argc);
+    for (size_t i = 0; i < argc; i++)
+        size += strlen(va_arg(ap, const char *));
+    va_end(ap);
+
+    s = xcalloc(size + 1, sizeof(*s));
+
+    va_start(ap, argc);
+    for (size_t i = 0; i < argc; i++)
+        strcat(s, va_arg(ap, const char *));
+    va_end(ap);
+
+    return s;
+}
+
 
 char *int2hexstr(uint32_t n, uint8_t padding)
 {

@@ -27,7 +27,7 @@
 
 typedef struct {
     const char *f_sym;
-    addr_t f_val;
+    moffset32_t f_val;
     uint32_t f_rel;   // offset from the beggining of the function
 } callstack_record_t;
 
@@ -44,7 +44,7 @@ typedef struct {
     callstack_record_t *callstack;
     size_t callstacksz;
     size_t callstacktop;
-    addr_t stacktop;
+    moffset32_t stacktop;
     struct instruction instr;
     _Bool queryfailed;
 } cpu_stat_t;
@@ -68,8 +68,8 @@ const callstack_record_t *x86_cpustat_callstack(void *);
 void x86_cpustat_init(void *);
 void x86_cpustat_set(void *, int, uint64_t);
 const struct instruction *c_86_cpustat_current_op(void *);
-void c_86_cpustat_set_current_op(void *, struct instruction);
-void x86_cpustat_push_callstack(void *, addr_t);
+void x86_cpustat_set_current_op(void *, struct instruction);
+void x86_cpustat_push_callstack(void *, moffset32_t);
 void x86_cpustat_pop_callstack(void *);
 void x86_cpustat_update_callstack(void *);
 
