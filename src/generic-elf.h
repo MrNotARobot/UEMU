@@ -30,14 +30,6 @@
 #include "types.h"
 
 typedef struct {
-    char *s_name;
-    moffset32_t s_value;
-    off_t s_strtab;
-    uint32_t s_strtabidx;
-    size_t s_size;
-} ELF_Sym;
-
-typedef struct {
     struct loadable_segment *g_loadable;
     moffset32_t g_entryp;
     uint16_t g_nloadable;
@@ -46,8 +38,6 @@ typedef struct {
     int g_execstack;
     int g_fd;
 
-    ELF_Sym *g_symtab;
-    size_t g_symtabsz;
     struct error_description err;
 } GenericELF;
 
@@ -64,16 +54,11 @@ enum GenericELF_ERRORS {
 #define G_elf_nloadable(g_elf) ((g_elf)->g_nloadable)
 #define G_elf_underlfd(g_elf) ((g_elf)->g_fd)
 #define G_elf_execstack(g_elf) ((g_elf)->g_execstack)
-#define G_elf_symtabsz(g_elf) ((g_elf)->g_symtabsz)
 
 // load program information needed for execution.
 void g_elf_load(GenericELF *, const char *);
 
 // free any memory allocated.
 void g_elf_unload(GenericELF *);
-
-ELF_Sym g_elf_getsym(GenericELF *, size_t);
-const char *g_elf_getsymbol(GenericELF *, size_t);
-const char *g_elf_lookup(GenericELF *, moffset32_t);
 
 #endif /* GENERIC_ELF.H */

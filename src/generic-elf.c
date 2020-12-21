@@ -36,9 +36,6 @@
 static void G_elf_set_error(GenericELF *, int, const char *, ...);
 static void elf_load32(GenericELF *);
 static void elf_load64(GenericELF *);
-static void elf_symtab_load32(GenericELF *);
-static void elf_symtab_load64(GenericELF *);
-static char *fetch_symbol_from_file(GenericELF *, off_t, uint32_t, size_t);
 
 static void G_elf_set_error(GenericELF *g_elf, int errnum, const char *fmt, ...)
 {
@@ -127,81 +124,6 @@ static void elf_load64(GenericELF *g_elf)
     return;
 }
 
-static void elf_symtab_load32(GenericELF *g_elf)
-{
-    ASSERT(g_elf != NULL);
-    Elf32_Ehdr ehdr;
-    Elf32_Shdr shdr;
-    Elf32_Off shoff;
-    Elf32_Sym sym;
-    Elf32_Shdr strtab;
-    off_t strtab_off;
-    off_t symtab_off;
-    uint32_t symtabsz;
-    _Bool found_symtab = 0;
-    int fd = g_elf->g_fd;
-
-    shoff = ehdr.e_shoff;
-    if (pread(fd, &ehdr, sizeof(ehdr), 0) == -1) {
-        G_elf_set_error(g_elf, errno,  "%s: %s", __FUNCTION__, strerror(errno));
-        return;
-    }
-
-    for (uint16_t i = 0; i < ehdr.e_shnum; i++, shoff+=ehdr.e_shentsize) {
-
-        if (pread(fd, &shdr, sizeof(shdr), shoff) == -1) {
-            G_elf_set_error(g_elf, errno,  "%s: %s", __FUNCTION__, strerror(errno));
-            return;
-        }
-
-        if (shdr.sh_type == SHT_SYMTAB) {
-            found_symtab = 1;
-            symtab_off = shdr.sh_offset;
-            symtabsz = shdr.sh_size / shdr.sh_entsize;
-            if (pread(fd, &strtab, sizeof(strtab), ehdr.e_shoff + (shdr.sh_link * ehdr.e_shentsize)) == -1) {
-                G_elf_set_error(g_elf, errno,  "%s: %s", __FUNCTION__, strerror(errno));
-                return;
-            }
-            strtab_off = strtab.sh_offset;
-
-            break;
-        }
-    }
-
-    
-    if (found_symtab) {
-
-        g_elf->g_symtabsz = 1;
-        g_elf->g_symtab = xcalloc(g_elf->g_symtabsz, sizeof(ELF_Sym));
-        g_elf->g_symtab[0].s_name = NULL;   // set this value up in cases where a lookup fails
-        g_elf->g_symtab[0].s_value = 0;
-        for (uint32_t i = 0; i < symtabsz; i++, symtab_off+=shdr.sh_entsize) {
-            if (pread(fd, &sym, sizeof(sym), symtab_off) == -1) {
-                G_elf_set_error(g_elf, errno,  "%s: %s", __FUNCTION__, strerror(errno));
-                return;
-            }
-
-            if (ELF32_ST_TYPE(sym.st_info) != STT_FUNC && ELF32_ST_TYPE(sym.st_info) != STT_OBJECT)
-                continue;
-
-            g_elf->g_symtabsz++;
-            g_elf->g_symtab = xreallocarray(g_elf->g_symtab, g_elf->g_symtabsz, sizeof(ELF_Sym));
-            // we resolve the name at the last moment when the emulator needs it
-            g_elf->g_symtab[g_elf->g_symtabsz-1].s_name = NULL;
-            g_elf->g_symtab[g_elf->g_symtabsz-1].s_strtab = strtab_off;
-            g_elf->g_symtab[g_elf->g_symtabsz-1].s_strtabidx = sym.st_name;
-            g_elf->g_symtab[g_elf->g_symtabsz-1].s_value = sym.st_value;
-            g_elf->g_symtab[g_elf->g_symtabsz-1].s_size = sym.st_size;
-        }
-    }
-
-}
-
-static void elf_symtab_load64(GenericELF *g_elf)
-{
-    ASSERT(g_elf != NULL);
-}
-
 /*
  * Do the basic file checking to garantee <executable> is an ELF file
  * an we properly support it.
@@ -265,10 +187,8 @@ void g_elf_load(GenericELF *g_elf, const char *executable)
 
     if (e_ident[EI_CLASS] == ELFCLASS32) {
         elf_load32(g_elf);
-        elf_symtab_load32(g_elf);
     } else if (e_ident[EI_CLASS] == ELFCLASS64) {
         elf_load64(g_elf);
-        elf_symtab_load64(g_elf);
     } else {
         G_elf_set_error(g_elf, UNSUPPORTED, "emulator: unsupported architecture (only 32-bit and 64-bit are supported)");
         close(fd);
@@ -297,56 +217,3 @@ void g_elf_unload(GenericELF *g_elf)
     close(g_elf->g_fd);
 }
 
-ELF_Sym g_elf_getsym(GenericELF *g_elf, size_t idx)
-{
-    ASSERT(g_elf != NULL);
-
-    if (idx < g_elf->g_symtabsz)
-        return g_elf->g_symtab[idx];
-    return g_elf->g_symtab[0];  // index zero is a entry with NULL as name and 0 as value
-}
-
-static char *fetch_symbol_from_file(GenericELF *g_elf, off_t strtab, uint32_t idx, size_t size)
-{
-
-    char *s = xcalloc(size + 1, sizeof(*s));
-
-    if (pread(g_elf->g_fd, s, size, strtab+idx) == -1) {
-        G_elf_set_error(g_elf, errno,  "%s: %s", __FUNCTION__, strerror(errno));
-        return NULL;
-    }
-
-    return s;
-}
-
-const char *g_elf_getsymbol(GenericELF *g_elf, size_t idx)
-{
-    ASSERT(g_elf != NULL);
-    ELF_Sym *sym = NULL;
-
-    if (idx < g_elf->g_symtabsz)
-        sym = &g_elf->g_symtab[idx];
-
-    if (sym) {
-        if (!sym->s_name)
-            sym->s_name = fetch_symbol_from_file(g_elf, sym->s_strtab, sym->s_strtabidx, sym->s_size);
-        return sym->s_name;
-    }
-
-    return NULL;
-}
-
-
-// lookup a function at the given address
-const char *g_elf_lookup(GenericELF *g_elf, moffset32_t faddr)
-{
-    ASSERT(g_elf != NULL);
-
-    for (size_t i = 0; i < g_elf->g_symtabsz; i++) {
-        if (faddr == g_elf->g_symtab[i].s_value) {
-            return g_elf_getsymbol(g_elf, i);
-        }
-    }
-
-    return NULL;
-}
