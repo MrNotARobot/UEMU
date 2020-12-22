@@ -19,8 +19,8 @@
  * SOFTWARE.
  */
 
-#ifndef GENERAL_H
-#define GENERAL_H
+#ifndef GENERAL_PURPOSE_H
+#define GENERAL_PURPOSE_H
 
 #include "../types.h"
 
@@ -124,4 +124,73 @@ void x86__mm_imm16_far_ret16(void *, uint16_t);
 void x86__mm_imm16_far_ret32(void *, uint16_t);
 
 
-#endif /* GENERAL_H */
+// ADD
+
+uint8_t x86__mm_al_imm8_add(void *, uint8_t);
+uint16_t x86__mm_ax_imm16_add(void *, uint16_t);
+uint32_t x86__mm_eax_imm32_add(void *, uint32_t);
+uint8_t x86__mm_m8_imm8_add(void *, moffset32_t, uint8_t, _Bool);
+uint8_t x86__mm_r8_imm8_add(void *, uint8_t, uint8_t);
+uint16_t x86__mm_m16_imm16_add(void *, moffset32_t, uint16_t, _Bool);
+uint16_t x86__mm_r16_imm16_add(void *, uint8_t, uint16_t);
+uint32_t x86__mm_m32_imm32_add(void *, moffset32_t, uint32_t, _Bool);
+uint32_t x86__mm_r32_imm32_add(void *, uint8_t, uint32_t);
+uint8_t x86__mm_r8_r8_add(void *, uint8_t, uint8_t);
+uint8_t x86__mm_m8_r8_add(void *, moffset32_t, uint8_t, _Bool);
+uint8_t x86__mm_r8_m8_add(void *, uint8_t, moffset32_t, _Bool);
+uint16_t x86__mm_r16_r16_add(void *, uint8_t, uint8_t);
+uint16_t x86__mm_m16_r16_add(void *, moffset32_t, uint8_t, _Bool);
+uint16_t x86__mm_r16_m16_add(void *, uint8_t, moffset32_t, _Bool);
+uint32_t x86__mm_r32_r32_add(void *, uint8_t, uint8_t);
+uint32_t x86__mm_m32_r32_add(void *, moffset32_t, uint8_t, _Bool);
+uint32_t x86__mm_r32_m32_add(void *, uint8_t, moffset32_t, _Bool);
+
+
+// LEA
+
+void x86__mm_r16_m_lea(void *, uint8_t, moffset16_t);
+void x86__mm_r32_m_lea(void *, uint8_t, moffset32_t);
+
+
+// SUB
+
+uint8_t x86__mm_al_imm8_sub(void *, uint8_t);
+uint16_t x86__mm_ax_imm16_sub(void *, uint16_t);
+uint32_t x86__mm_eax_imm32_sub(void *, uint32_t);
+uint8_t x86__mm_m8_imm8_sub(void *, moffset32_t, uint8_t, _Bool);
+uint8_t x86__mm_r8_imm8_sub(void *, uint8_t, uint8_t);
+uint16_t x86__mm_m16_imm16_sub(void *, moffset32_t, uint16_t, _Bool);
+uint16_t x86__mm_r16_imm16_sub(void *, uint8_t, uint16_t);
+uint32_t x86__mm_m32_imm32_sub(void *, moffset32_t, uint32_t, _Bool);
+uint32_t x86__mm_r32_imm32_sub(void *, uint8_t, uint32_t);
+uint8_t x86__mm_r8_r8_sub(void *, uint8_t, uint8_t);
+uint8_t x86__mm_m8_r8_sub(void *, moffset32_t, uint8_t, _Bool);
+uint8_t x86__mm_r8_m8_sub(void *, uint8_t, moffset32_t, _Bool);
+uint16_t x86__mm_r16_r16_sub(void *, uint8_t, uint8_t);
+uint16_t x86__mm_m16_r16_sub(void *, moffset32_t, uint8_t, _Bool);
+uint16_t x86__mm_r16_m16_sub(void *, uint8_t, moffset32_t, _Bool);
+uint32_t x86__mm_r32_r32_sub(void *, uint8_t, uint8_t);
+uint32_t x86__mm_m32_r32_sub(void *, moffset32_t, uint8_t, _Bool);
+uint32_t x86__mm_r32_m32_sub(void *, uint8_t, moffset32_t, _Bool);
+
+
+// TEST
+
+void x86__mm_al_imm8_test(void *, uint8_t);
+void x86__mm_ax_imm16_test(void *, uint16_t);
+void x86__mm_eax_imm32_test(void *, uint32_t);
+void x86__mm_m8_imm8_test(void *, moffset32_t, uint8_t);
+void x86__mm_r8_imm8_test(void *, uint8_t, uint8_t);
+void x86__mm_m16_imm16_test(void *, moffset32_t, uint16_t);
+void x86__mm_r16_imm16_test(void *, uint8_t, uint16_t);
+void x86__mm_m32_imm32_test(void *, moffset32_t, uint32_t);
+void x86__mm_r32_imm32_test(void *, uint8_t, uint32_t);
+void x86__mm_r8_r8_test(void *, uint8_t, uint8_t);
+void x86__mm_m8_r8_test(void *, moffset32_t, uint8_t);
+void x86__mm_r16_r16_test(void *, uint8_t, uint8_t);
+void x86__mm_m16_r16_test(void *, moffset32_t, uint8_t);
+void x86__mm_r32_r32_test(void *, uint8_t, uint8_t);
+void x86__mm_m32_r32_test(void *, moffset32_t, uint8_t);
+
+
+#endif /* GENERAL_PURPOSE_H */

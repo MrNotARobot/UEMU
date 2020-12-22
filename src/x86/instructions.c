@@ -23,10 +23,13 @@
  */
 
 #include "instructions.h"
+
+#include "general-purpose.h"
+
 #include "cpu.h"
-#include "general.h"
 #include "x86-utils.h"
 #include "../system.h"
+#include "disassembler.h"
 
 
 void x86_aaa(void *cpu, struct exec_data data)
@@ -51,11 +54,96 @@ void x86_aad(void *cpu, struct exec_data data)
 
 void x86_mm_add(void *cpu, struct exec_data data)
 {
-    (void)cpu, (void)data;
+    moffset32_t vaddr;
 
-    
-    x86_stopcpu(cpu);
-    s_error(1, "emulator: Instruction %s not implemented", __FUNCTION__);
+    if (data.adrsz_pfx)
+        vaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
+    else
+        vaddr = x86_effectiveaddress32(cpu, data.modrm, data.sib, low16(data.moffset));
+
+    switch (data.opc) {
+        case 0x04:  // ADD AL, imm8
+            x86__mm_al_imm8_add(cpu, lsb(data.imm1));
+            break;
+        case 0x05:  // ADD eAX, imm32  ADD AX, imm16
+            if (data.oprsz_pfx)
+                x86__mm_ax_imm16_add(cpu, low16(data.imm1));
+            else
+                x86__mm_eax_imm32_add(cpu, data.imm1);
+            break;
+        case 0x82:
+        case 0x80:  // ADD rm8, imm8
+            if (vaddr)
+                x86__mm_m8_imm8_add(cpu, vaddr, lsb(data.imm1), data.lock);
+            else
+                x86__mm_r8_imm8_add(cpu, effctvregister(data.modrm, 8), lsb(data.imm1));
+            break;
+        case 0x81:  // ADD rm32, imm32  ADD rm16, imm16
+            if (vaddr) {
+                if (data.oprsz_pfx)
+                    x86__mm_m16_imm16_add(cpu, vaddr, low16(data.imm1), data.lock);
+                else
+                    x86__mm_m32_imm32_add(cpu, vaddr, data.imm1, data.lock);
+            } else {
+                if (data.oprsz_pfx)
+                    x86__mm_r16_imm16_add(cpu, effctvregister(data.modrm, 16), low16(data.imm1));
+                else
+                    x86__mm_r32_imm32_add(cpu, effctvregister(data.modrm, 32), data.imm1);
+            }
+            break;
+        case 0x83:  // ADD rm32, imm8   ADD rm16, imm8
+            if (vaddr) {
+                if (data.oprsz_pfx)
+                    x86__mm_m16_imm16_add(cpu, vaddr, zeroxtnd8to16(data.imm1), data.lock);
+                else
+                    x86__mm_m32_imm32_add(cpu, vaddr, zeroxtnd8(data.imm1), data.lock);
+            } else {
+                if (data.oprsz_pfx)
+                    x86__mm_r16_imm16_add(cpu, effctvregister(data.modrm, 16), zeroxtnd8to16(data.imm1));
+                else
+                    x86__mm_r32_imm32_add(cpu, effctvregister(data.modrm, 32), zeroxtnd8(data.imm1));
+            }
+            break;
+
+        case 0x00:  // ADD rm8, r8
+            if (vaddr)
+                x86__mm_m8_imm8_add(cpu, vaddr, reg(data.modrm), data.lock);
+            else
+                x86__mm_r8_imm8_add(cpu, effctvregister(data.modrm, 8), reg(data.modrm));
+            break;
+        case 0x01:  // ADD rm32, r32    ADD rm16, r16
+            if (vaddr) {
+                if (data.oprsz_pfx)
+                    x86__mm_m16_r16_add(cpu, vaddr, reg(data.modrm), data.lock);
+                else
+                    x86__mm_m32_r32_add(cpu, vaddr, reg(data.modrm), data.lock);
+            } else {
+                if (data.oprsz_pfx)
+                    x86__mm_r16_r16_add(cpu, effctvregister(data.modrm, 16), reg(data.modrm));
+                else
+                    x86__mm_r32_r32_add(cpu, effctvregister(data.modrm, 32), reg(data.modrm));
+            }
+            break;
+        case 0x02:  // ADD r8, rm8
+            if (vaddr)
+                x86__mm_r8_m8_add(cpu, reg(data.modrm), vaddr, data.lock);
+            else
+                x86__mm_r8_r8_add(cpu, reg(data.modrm), effctvregister(data.modrm, 8));
+            break;
+        case 0x03:
+            if (vaddr) {
+                if (data.oprsz_pfx)
+                    x86__mm_r16_m16_add(cpu, reg(data.modrm), vaddr, data.lock);
+                else
+                    x86__mm_r32_m32_add(cpu, reg(data.modrm), vaddr, data.lock);
+            } else {
+                if (data.oprsz_pfx)
+                    x86__mm_r16_r16_add(cpu, reg(data.modrm), effctvregister(data.modrm, 16));
+                else
+                    x86__mm_r32_r32_add(cpu, reg(data.modrm), effctvregister(data.modrm, 32));
+            }
+            break;
+    }
 }
 
 
@@ -231,15 +319,12 @@ void x86_aeskeygenassist(void *cpu, struct exec_data data)
 
 void x86_mm_and(void *cpu, struct exec_data data)
 {
-    moffset32_t effctvaddr;
-
-    x86_clearflag(cpu, OF);
-    x86_clearflag(cpu, CF);
+    moffset32_t vaddr;
 
     if (data.adrsz_pfx)
-        effctvaddr = x86_effctvaddr16(cpu, data.modrm, low16(data.moffset));
+        vaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
     else
-        effctvaddr = x86_effctvaddr32(cpu, data.modrm, data.sib, data.moffset);
+        vaddr = x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset);
 
     switch (data.opc) {
         case 0x24:  // AND AL, imm8
@@ -252,74 +337,74 @@ void x86_mm_and(void *cpu, struct exec_data data)
                 x86__mm_eax_imm32_and(cpu, data.imm1);
             break;
         case 0x80:  // AND r/m8, imm8
-            if (effctvaddr)
-                x86__mm_m8_imm8_and(cpu, effctvaddr, lsb(data.imm1), data.lock);
+            if (vaddr)
+                x86__mm_m8_imm8_and(cpu, vaddr, lsb(data.imm1), data.lock);
             else
-                x86__mm_r8_imm8_and(cpu, effctvregister(data.modrm), lsb(data.imm1));
+                x86__mm_r8_imm8_and(cpu, effctvregister(data.modrm, 8), lsb(data.imm1));
             break;
         case 0x81: // AND r/m32, imm32      AND r/m16, imm16
-            if (effctvaddr) {
+            if (vaddr) {
                 if (data.oprsz_pfx)
-                    x86__mm_m16_imm16_and(cpu, effctvaddr, low16(data.imm1), data.lock);
+                    x86__mm_m16_imm16_and(cpu, vaddr, low16(data.imm1), data.lock);
                 else
-                    x86__mm_m32_imm32_and(cpu, effctvaddr, data.imm1, data.lock);
+                    x86__mm_m32_imm32_and(cpu, vaddr, data.imm1, data.lock);
             } else {
                 if (data.oprsz_pfx) {
-                    x86__mm_r16_imm16_and(cpu, effctvregister(data.modrm), low16(data.imm1));
+                    x86__mm_r16_imm16_and(cpu, effctvregister(data.modrm, 16), low16(data.imm1));
                 } else {
-                    x86__mm_r32_imm32_and(cpu, effctvregister(data.modrm), data.imm1);
+                    x86__mm_r32_imm32_and(cpu, effctvregister(data.modrm, 32), data.imm1);
                 }
             }
             break;
         case 0x83:  // AND r/m32, imm8  AND r/m16, imm8
-            if (effctvaddr) {
+            if (vaddr) {
                 if (data.oprsz_pfx)
-                    x86__mm_m16_imm16_and(cpu, effctvaddr, sign8to16(lsb(data.imm1)), data.lock);
+                    x86__mm_m16_imm16_and(cpu, vaddr, sign8to16(lsb(data.imm1)), data.lock);
                 else
-                    x86__mm_m32_imm32_and(cpu, effctvaddr, sign8to32(lsb(data.imm1)), data.lock);
+                    x86__mm_m32_imm32_and(cpu, vaddr, sign8to32(lsb(data.imm1)), data.lock);
             } else {
                 if (data.oprsz_pfx)
-                    x86__mm_r16_imm16_and(cpu, effctvregister(data.modrm), sign8to16(lsb(data.imm1)));
+                    x86__mm_r16_imm16_and(cpu, effctvregister(data.modrm, 16), sign8to16(lsb(data.imm1)));
                 else
-                    x86__mm_r32_imm32_and(cpu, effctvregister(data.modrm), sign8to32(lsb(data.imm1)));
+                    x86__mm_r32_imm32_and(cpu, effctvregister(data.modrm, 32), sign8to32(lsb(data.imm1)));
             }
             break;
         case 0x20:  // AND r/m8, r8
-            if (effctvaddr)
-                x86__mm_m8_r8_and(cpu, effctvaddr, reg(data.modrm), data.lock);
+            if (vaddr)
+                x86__mm_m8_r8_and(cpu, vaddr, reg(data.modrm), data.lock);
             else
-                x86__mm_r8_r8_and(cpu, effctvregister(data.modrm), reg(data.modrm));
+                x86__mm_r8_r8_and(cpu, effctvregister(data.modrm, 8), reg(data.modrm));
             break;
         case 0x21:  // AND r/m32, r32   AND r/m16, r16
-            if (effctvaddr) {
+            if (vaddr) {
                 if (data.oprsz_pfx)
-                    x86__mm_m16_r16_and(cpu, effctvaddr, reg(data.modrm), data.lock);
+                    x86__mm_m16_r16_and(cpu, vaddr, reg(data.modrm), data.lock);
                 else
-                    x86__mm_m32_r32_and(cpu, effctvaddr, reg(data.modrm), data.lock);
+                    x86__mm_m32_r32_and(cpu, vaddr, reg(data.modrm), data.lock);
             } else {
                 if (data.oprsz_pfx)
-                    x86__mm_r16_r16_and(cpu, effctvregister(data.modrm), reg(data.modrm));
+                    x86__mm_r16_r16_and(cpu, effctvregister(data.modrm, 16), reg(data.modrm));
                 else
-                    x86__mm_r32_r32_and(cpu, effctvregister(data.modrm), reg(data.modrm));
+                    x86__mm_r32_r32_and(cpu, effctvregister(data.modrm, 32), reg(data.modrm));
             }
             break;
         case 0x22:  // AND r8, r/m8
-            if (effctvaddr)
-                x86__mm_r8_m8_and(cpu, reg(data.modrm), effctvaddr, data.lock);
+            if (vaddr)
+                x86__mm_r8_m8_and(cpu, reg(data.modrm), vaddr, data.lock);
             else
-                x86__mm_r8_r8_and(cpu, reg(data.modrm), effctvregister(data.modrm));
+                x86__mm_r8_r8_and(cpu, reg(data.modrm), effctvregister(data.modrm, 8));
             break;
         case 0x23: // AND r32, r/m32    AND r16, r/m16
-            if (effctvaddr) {
+            if (vaddr) {
                 if (data.oprsz_pfx)
-                    x86__mm_r16_m16_and(cpu, reg(data.modrm), effctvaddr, data.lock);
+                    x86__mm_r16_m16_and(cpu, reg(data.modrm), vaddr, data.lock);
                 else
-                    x86__mm_r32_m32_and(cpu, reg(data.modrm), effctvaddr, data.lock);
+                    x86__mm_r32_m32_and(cpu, reg(data.modrm), vaddr, data.lock);
             } else {
                 if (data.oprsz_pfx)
-                    x86__mm_r16_r16_and(cpu, reg(data.modrm), effctvregister(data.modrm));
+                    x86__mm_r16_r16_and(cpu, reg(data.modrm), effctvregister(data.modrm, 16));
                 else
-                    x86__mm_r32_r32_and(cpu, reg(data.modrm), effctvregister(data.modrm));
+                    x86__mm_r32_r32_and(cpu, reg(data.modrm), effctvregister(data.modrm, 32));
             }
             break;
 
@@ -569,15 +654,15 @@ void x86_bts(void *cpu, struct exec_data data)
 
 void x86_mm_call(void *cpu, struct exec_data data)
 {
-    moffset32_t effctvaddr;
+    moffset32_t vaddr;
 
     if (data.lock)
-        x86_raise_exception(cpu, INT_UD);
+        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
 
     if (data.adrsz_pfx)
-        effctvaddr = x86_effctvaddr16(cpu, data.modrm, low16(data.moffset));
+        vaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
     else
-        effctvaddr = x86_effctvaddr32(cpu, data.modrm, data.sib, data.moffset);
+        vaddr = x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset);
 
 
     switch (data.opc) {
@@ -589,22 +674,22 @@ void x86_mm_call(void *cpu, struct exec_data data)
             break;
         case 0xFF:
             if (data.ext == 2) {    // FF /2 CALL r/m32 CALL r/m16
-                if (effctvaddr) {
+                if (vaddr) {
                     if (data.oprsz_pfx)
-                        x86__mm_m16_call(cpu, effctvaddr);
+                        x86__mm_m16_call(cpu, vaddr);
                     else
-                        x86__mm_m32_call(cpu, effctvaddr);
+                        x86__mm_m32_call(cpu, vaddr);
                 } else {
                     if (data.oprsz_pfx)
-                        x86__mm_r16_call(cpu, effctvregister(data.modrm));
+                        x86__mm_r16_call(cpu, effctvregister(data.modrm, 16));
                     else
-                        x86__mm_r32_call(cpu, effctvregister(data.modrm));
+                        x86__mm_r32_call(cpu, effctvregister(data.modrm, 32));
                 }
             } else {    // FF /3 CALL m16:32  CALL m16:16
                 if (data.oprsz_pfx)
-                    x86__mm_far_ptr16_call(cpu, x86_rdmem16(cpu, effctvaddr + 2), x86_rdmem16(cpu, effctvaddr));
+                    x86__mm_far_ptr16_call(cpu, x86_rdmem16(cpu, vaddr + 2), x86_rdmem16(cpu, vaddr));
                 else
-                    x86__mm_far_ptr32_call(cpu, x86_rdmem16(cpu, effctvaddr + 4), x86_rdmem32(cpu, effctvaddr));
+                    x86__mm_far_ptr32_call(cpu, x86_rdmem16(cpu, vaddr + 4), x86_rdmem32(cpu, vaddr));
             }
             break;
         case 0x9A:
@@ -2234,13 +2319,91 @@ void x86_iret(void *cpu, struct exec_data data)
 }
 
 
-void x86_jcc(void *cpu, struct exec_data data)
+void x86_mm_jcc(void *cpu, struct exec_data data)
 {
-    (void)cpu, (void)data;
+    _Bool condition_is_true = 0;
+    reg32_t jump_target = x86_findbranchtarget(cpu, data);
+    if (data.lock)
+        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
 
-    
-    x86_stopcpu(cpu);
-    s_error(1, "emulator: Instruction %s not implemented", __FUNCTION__);
+    switch (data.opc) {
+        case 0x87:  // JA rel32     rel16
+        case 0x77:  // JA rel8
+            condition_is_true = x86_flag_off(cpu, CF) && x86_flag_off(cpu, ZF);
+            break;
+        case 0x83:  // JAE rel32    rel16
+        case 0x73:  // JAE rel8
+            condition_is_true = x86_flag_off(cpu, CF);
+            break;
+        case 0x82:  // JB rel32     rel16
+        case 0x72:  // JB rel8
+            condition_is_true = x86_flag_on(cpu, CF);
+            break;
+        case 0x86:  // JBE rel32    rel16
+        case 0x76:  // JBE rel8
+            condition_is_true = x86_flag_on(cpu, CF) || x86_flag_on(cpu, ZF);
+            break;
+        case 0xE3:  // JCXZ rel8
+            if (data.adrsz_pfx)
+                condition_is_true = x86_rdreg16(cpu, CX) == 0;
+            else
+                condition_is_true = x86_rdreg32(cpu, ECX) == 0;
+            break;
+        case 0x84:  // JE rel32     rel16
+        case 0x74:  // JE rel8
+            condition_is_true = x86_flag_on(cpu, ZF);
+            break;
+        case 0x8F:  // JG rel32     rel16
+        case 0x7F:  // JG rel7
+            condition_is_true = x86_flag_off(cpu, ZF) && x86_flag_off(cpu, SF);
+            break;
+        case 0x8D:  // JGE rel32    rel16
+        case 0x7D:  // JGE rel8
+            condition_is_true = x86_flag_off(cpu, SF);
+            break;
+        case 0x8C:  // JL rel32     rel16
+        case 0x7C:  // JL rel8
+            condition_is_true = (x86_flag_on(cpu, SF) && x86_flag_off(cpu, OF)) ||
+                                (x86_flag_off(cpu, SF) && x86_flag_on(cpu, OF));
+            break;
+        case 0x8E:  // JLE rel32     rel16
+        case 0x7E:  // JLE rel8
+            condition_is_true = x86_flag_on(cpu, ZF) ||
+                                (x86_flag_on(cpu, SF) && x86_flag_off(cpu, OF)) ||
+                                (x86_flag_off(cpu, SF) && x86_flag_on(cpu, OF));
+            break;
+        case 0x85:  // JNE rel32     rel16
+        case 0x75:  // JNE rel8
+            condition_is_true = x86_flag_off(cpu, ZF);
+            break;
+        case 0x81:  // JNO rel32     rel16
+        case 0x71:  // JNO rel8
+            condition_is_true = x86_flag_off(cpu, OF);
+            break;
+        case 0x8B:  // JNP rel32     rel16
+        case 0x7B:  // JNP rel8
+            condition_is_true = x86_flag_off(cpu, PF);
+            break;
+        case 0x89:  // JNS rel32     rel16
+        case 0x79:  // JNS rel8
+            condition_is_true = x86_flag_off(cpu, SF);
+            break;
+        case 0x80:  // JO rel32     rel16
+        case 0x70:  // JO rel8
+            condition_is_true = x86_flag_on(cpu, OF);
+            break;
+        case 0x8A:  // JP rel32     rel16
+        case 0x7A:  // JPE rel8
+            condition_is_true = x86_flag_on(cpu, PF);
+            break;
+        case 0x88:  // JS rel32     rel16
+        case 0x78:  // JS rel8
+            condition_is_true = x86_flag_on(cpu, SF);
+            break;
+    }
+
+    if (condition_is_true)
+        x86_wrreg32(cpu, EIP, jump_target);
 }
 
 
@@ -2344,13 +2507,19 @@ void x86_lgs(void *cpu, struct exec_data data)
 }
 
 
-void x86_lea(void *cpu, struct exec_data data)
+void x86_mm_lea(void *cpu, struct exec_data data)
 {
-    (void)cpu, (void)data;
+    if (data.lock)
+        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
 
-    
-    x86_stopcpu(cpu);
-    s_error(1, "emulator: Instruction %s not implemented", __FUNCTION__);
+    if (data.adrsz_pfx && data.oprsz_pfx)
+        x86__mm_r16_m_lea(cpu, reg(data.modrm), x86_effectiveaddress16(cpu, data.modrm, data.moffset));
+    else if (data.oprsz_pfx)
+        x86__mm_r16_m_lea(cpu, reg(data.modrm), moffset16(x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset)));
+    else if (data.adrsz_pfx)
+        x86__mm_r32_m_lea(cpu, reg(data.modrm), zeroxtnd16(x86_effectiveaddress16(cpu, data.modrm, data.moffset)));
+    else
+        x86__mm_r32_m_lea(cpu, reg(data.modrm), x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset));
 }
 
 
@@ -2586,67 +2755,67 @@ void x86_monitor(void *cpu, struct exec_data data)
 
 void x86_mm_mov(void *cpu, struct exec_data data)
 {
-    moffset32_t effctvaddr = 0;
+    moffset32_t vaddr = 0;
     int reg_dest = 0;
     _Bool r8imm8 = 0, rXimmX = 0;
     if (data.lock)
-        x86_raise_exception(cpu, INT_UD);
+        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
 
     if (data.adrsz_pfx)
-        effctvaddr = x86_effctvaddr16(cpu, data.modrm, low16(data.moffset));
+        vaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
     else
-        effctvaddr = x86_effctvaddr32(cpu, data.modrm, data.sib, data.moffset);
+        vaddr = x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset);
 
     switch (data.opc) {
         case 0x88:  // MOV r/m8, r8
-            if (effctvaddr)
-                x86__mm_m8_r8_mov(cpu, effctvaddr, reg(data.modrm));
+            if (vaddr)
+                x86__mm_m8_r8_mov(cpu, vaddr, reg(data.modrm));
             else
-                x86__mm_m8_r8_mov(cpu, effctvregister(data.modrm), reg(data.modrm));
+                x86__mm_m8_r8_mov(cpu, effctvregister(data.modrm, 8), reg(data.modrm));
             break;
         case 0x89: // MOV r/m32,r32     MOV r/m16,r16
-            if (effctvaddr) {
+            if (vaddr) {
                 if (data.oprsz_pfx)
-                    x86__mm_m16_r16_mov(cpu, effctvaddr, reg(data.modrm));
+                    x86__mm_m16_r16_mov(cpu, vaddr, reg(data.modrm));
                 else
-                    x86__mm_m32_r32_mov(cpu, effctvaddr, reg(data.modrm));
+                    x86__mm_m32_r32_mov(cpu, vaddr, reg(data.modrm));
             } else {
                 if (data.oprsz_pfx)
-                    x86__mm_r16_r16_mov(cpu, effctvregister(data.modrm), reg(data.modrm));
+                    x86__mm_r16_r16_mov(cpu, effctvregister(data.modrm, 16), reg(data.modrm));
                 else
-                    x86__mm_r32_r32_mov(cpu, effctvregister(data.modrm), reg(data.modrm));
+                    x86__mm_r32_r32_mov(cpu, effctvregister(data.modrm, 32), reg(data.modrm));
             }
             break;
         case 0x8A:  //MOV r8,r/m8
-            if (effctvaddr)
-                x86__mm_r8_m8_mov(cpu, reg(data.modrm), effctvaddr);
+            if (vaddr)
+                x86__mm_r8_m8_mov(cpu, reg(data.modrm), vaddr);
             else
-                x86__mm_r8_r8_mov(cpu, reg(data.modrm), effctvregister(data.modrm));
+                x86__mm_r8_r8_mov(cpu, reg(data.modrm), effctvregister(data.modrm, 8));
             break;
         case 0x8B: // MOV r32,r/m32     MOV r16,r/m16
-            if (effctvaddr) {
+            if (vaddr) {
                 if (data.oprsz_pfx)
-                    x86__mm_r16_m16_mov(cpu, reg(data.modrm), effctvaddr);
+                    x86__mm_r16_m16_mov(cpu, reg(data.modrm), vaddr);
                 else
-                    x86__mm_r32_m32_mov(cpu, reg(data.modrm), effctvaddr);
+                    x86__mm_r32_m32_mov(cpu, reg(data.modrm), vaddr);
             } else {
                 if (data.oprsz_pfx)
-                    x86__mm_r16_r16_mov(cpu, reg(data.modrm), effctvregister(data.modrm));
+                    x86__mm_r16_r16_mov(cpu, reg(data.modrm), effctvregister(data.modrm, 16));
                 else
-                    x86__mm_r32_r32_mov(cpu, reg(data.modrm), effctvregister(data.modrm));
+                    x86__mm_r32_r32_mov(cpu, reg(data.modrm), effctvregister(data.modrm, 32));
             }
             break;
         case 0x8C: // MOV r/m16, Sreg
-            if (effctvaddr)
-                x86__mm_m16_sreg_mov(cpu, effctvaddr, reg(data.modrm));
+            if (vaddr)
+                x86__mm_m16_sreg_mov(cpu, vaddr, reg(data.modrm));
             else
-                x86__mm_r16_sreg_mov(cpu, effctvregister(data.modrm), reg(data.modrm));
+                x86__mm_r16_sreg_mov(cpu, effctvregister(data.modrm, 16), reg(data.modrm));
             break;
         case 0x8E: // MOV Sreg,r/m16
-            if (effctvaddr)
-                x86__mm_sreg_m16_mov(cpu, reg(data.modrm), effctvaddr);
+            if (vaddr)
+                x86__mm_sreg_m16_mov(cpu, reg(data.modrm), vaddr);
             else
-                x86__mm_sreg_r16_mov(cpu, reg(data.modrm), effctvregister(data.modrm));
+                x86__mm_sreg_r16_mov(cpu, reg(data.modrm), effctvregister(data.modrm, 16));
             break;
         case 0xA0: // MOV AL,moffs8
             x86__mm_r8_imm8_mov(cpu, AL, x86_rdsreg(cpu, data.segovr) + lsb(data.imm1));
@@ -2687,22 +2856,22 @@ void x86_mm_mov(void *cpu, struct exec_data data)
         case 0xBF: reg_dest = EDI; r8imm8 = 1; break;
 
         case 0xC6:  // MOV r/m8, imm8
-            if (effctvaddr)
-                x86__mm_m8_imm8_mov(cpu, effctvaddr, lsb(data.imm1));
+            if (vaddr)
+                x86__mm_m8_imm8_mov(cpu, vaddr, lsb(data.imm1));
             else
-                x86__mm_r8_imm8_mov(cpu, effctvregister(data.modrm), lsb(data.imm1));
+                x86__mm_r8_imm8_mov(cpu, effctvregister(data.modrm, 8), lsb(data.imm1));
             break;
         case 0xC7: // MOV r/m32, imm32  MOV r/m16, imm16
-            if (effctvaddr) {
+            if (vaddr) {
                 if (data.oprsz_pfx)
-                    x86__mm_m16_imm16_mov(cpu, effctvaddr, low16(data.imm1));
+                    x86__mm_m16_imm16_mov(cpu, vaddr, low16(data.imm1));
                 else
-                    x86__mm_m32_imm32_mov(cpu, effctvaddr, data.imm1);
+                    x86__mm_m32_imm32_mov(cpu, vaddr, data.imm1);
             } else {
                 if (data.oprsz_pfx)
-                    x86__mm_r16_imm16_mov(cpu, effctvregister(data.modrm), low16(data.imm1));
+                    x86__mm_r16_imm16_mov(cpu, effctvregister(data.modrm, 16), low16(data.imm1));
                 else
-                    x86__mm_r32_imm32_mov(cpu, effctvregister(data.modrm), data.imm1);
+                    x86__mm_r32_imm32_mov(cpu, effctvregister(data.modrm, 32), data.imm1);
             }
             break;
     }
@@ -3124,7 +3293,7 @@ void x86_neg(void *cpu, struct exec_data data)
 void x86_mm_nop(void *cpu, struct exec_data data)
 {
     if (data.lock)
-        x86_raise_exception(cpu, INT_UD);
+        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
 }
 
 
@@ -3920,22 +4089,22 @@ void x86_pmuludq(void *cpu, struct exec_data data)
 
 void x86_mm_pop(void *cpu, struct exec_data data)
 {
-    moffset32_t effctvaddr = 0;
+    moffset32_t vaddr = 0;
     int reg_dest = 0;
     _Bool is_sreg = 0;
 
     if (data.lock)
-        x86_raise_exception(cpu, INT_UD);
+        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
 
     switch (data.opc) {
         case 0x8F:
             if (data.adrsz_pfx)
-                effctvaddr = x86_effctvaddr16(cpu, data.modrm, low16(data.moffset));
+                vaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
             else
-                effctvaddr = x86_effctvaddr32(cpu, data.modrm, data.sib, data.moffset);
+                vaddr = x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset);
 
-            if (!effctvaddr)
-                reg_dest = effctvregister(data.modrm);
+            if (!vaddr)
+                reg_dest = effctvregister(data.modrm, 32);
             break;
         case 0x58: reg_dest = EAX; break;
         case 0x59: reg_dest = ECX; break;
@@ -3952,11 +4121,11 @@ void x86_mm_pop(void *cpu, struct exec_data data)
         case 0xA9: reg_dest = GS; is_sreg = 1; break;
     }
 
-    if (effctvaddr) {
+    if (vaddr) {
         if (data.oprsz_pfx)
-            x86__mm_m16_pop(cpu, effctvaddr);
+            x86__mm_m16_pop(cpu, vaddr);
         else
-            x86__mm_m32_pop(cpu, effctvaddr);
+            x86__mm_m32_pop(cpu, vaddr);
     } else if (is_sreg) {
             x86__mm_sreg_pop(cpu, reg_dest);
     } else {
@@ -4350,32 +4519,32 @@ void x86_punpcklqdq(void *cpu, struct exec_data data)
 
 void x86_mm_push(void *cpu, struct exec_data data)
 {
-    moffset32_t effctvaddr;
+    moffset32_t vaddr;
     uint8_t reg = 0;
     uint8_t sreg = 0;
     _Bool  is_sreg = 0, is_reg = 0;
 
     if (data.lock)
-        x86_raise_exception(cpu, INT_UD);;
+        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
 
 
     if (data.adrsz_pfx)
-        effctvaddr = x86_effctvaddr16(cpu, data.modrm, low16(data.moffset));
+        vaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
     else
-        effctvaddr = x86_effctvaddr32(cpu, data.modrm, data.sib, data.moffset);
+        vaddr = x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset);
 
     switch (data.opc) {
         case 0xFF: // PUSH r/m32    PUSH r/m16
-            if (effctvaddr) {
+            if (vaddr) {
                 if (data.oprsz_pfx)
-                    x86__mm_m16_push(cpu, effctvaddr);
+                    x86__mm_m16_push(cpu, vaddr);
                 else
-                    x86__mm_m32_push(cpu, effctvaddr);
+                    x86__mm_m32_push(cpu, vaddr);
             } else {
                 if (data.oprsz_pfx)
-                    x86__mm_r16_push(cpu, effctvregister(data.modrm));
+                    x86__mm_r16_push(cpu, effctvregister(data.modrm, 16));
                 else
-                    x86__mm_r32_push(cpu, effctvregister(data.modrm));
+                    x86__mm_r32_push(cpu, effctvregister(data.modrm, 32));
             }
             break;
 
@@ -4730,13 +4899,71 @@ void x86_scas(void *cpu, struct exec_data data)
 }
 
 
-void x86_setcc(void *cpu, struct exec_data data)
+void x86_mm_setcc(void *cpu, struct exec_data data)
 {
-    (void)cpu, (void)data;
+    _Bool  condition_is_true = 0;
+    moffset32_t vaddr = x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset);
 
-    
-    x86_stopcpu(cpu);
-    s_error(1, "emulator: Instruction %s not implemented", __FUNCTION__);
+    switch (data.opc) {
+        case 0x97:  // SETA
+            condition_is_true = x86_flag_off(cpu, CF) && x86_flag_off(cpu, ZF);
+            break;
+        case 0x93:  // SETAE
+            condition_is_true = x86_flag_off(cpu, CF);
+            break;
+        case 0x92:  // SETB
+            condition_is_true = x86_flag_on(cpu, CF);
+            break;
+        case 0x96:  // SETBE
+            condition_is_true = x86_flag_on(cpu, CF) || x86_flag_on(cpu, ZF);
+            break;
+        case 0x94:  // SETE
+            condition_is_true = x86_flag_on(cpu, ZF);
+            break;
+        case 0x9F:  // SETG
+            condition_is_true = x86_flag_off(cpu, ZF) && x86_flag_off(cpu, SF);
+            break;
+        case 0x9D:  // SETGE
+            condition_is_true = x86_flag_off(cpu, SF);
+            break;
+        case 0x9C:  // SETL
+            condition_is_true = (x86_flag_off(cpu, SF) && x86_flag_on(cpu, OF)) ||
+                                (x86_flag_on(cpu, SF) && x86_flag_off(cpu, OF));
+            break;
+        case 0x9E:  // SETLE
+            condition_is_true = x86_flag_on(cpu, ZF) ||
+                                (x86_flag_off(cpu, SF) && x86_flag_on(cpu, OF)) ||
+                                (x86_flag_on(cpu, SF) && x86_flag_off(cpu, OF));
+            break;
+        case 0x95:  // SETNE
+            condition_is_true = x86_flag_off(cpu, ZF);
+            break;
+        case 0x91:  // SETNO
+            condition_is_true = x86_flag_off(cpu, OF);
+            break;
+        case 0x9B:  // SETNP
+            condition_is_true = x86_flag_off(cpu, PF);
+            break;
+        case 0x99:  // SETNS
+            condition_is_true = x86_flag_off(cpu, SF);
+            break;
+        case 0x90:  // SETO
+            condition_is_true = x86_flag_on(cpu, ZF);
+            break;
+        case 0x9A:  // SETP
+            condition_is_true = x86_flag_on(cpu, PF);
+            break;
+        case 0x98:  // SETS
+            condition_is_true = x86_flag_on(cpu, SF);
+            break;
+    }
+
+    if (condition_is_true) {
+        if (vaddr)
+            x86_wrmem8(cpu, vaddr, 1);
+        else
+            x86_wrreg8(cpu, effctvregister(data.modrm, 8), 1);
+    }
 }
 
 
@@ -4990,13 +5217,98 @@ void x86_str(void *cpu, struct exec_data data)
 }
 
 
-void x86_sub(void *cpu, struct exec_data data)
+void x86_mm_sub(void *cpu, struct exec_data data)
 {
-    (void)cpu, (void)data;
+    moffset32_t vaddr;
 
-    
-    x86_stopcpu(cpu);
-    s_error(1, "emulator: Instruction %s not implemented", __FUNCTION__);
+    if (data.adrsz_pfx)
+        vaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
+    else
+        vaddr = x86_effectiveaddress32(cpu, data.modrm, data.sib, low16(data.moffset));
+
+    switch (data.opc) {
+        case 0x2C:  // SUB AL, imm8
+            x86__mm_al_imm8_sub(cpu, lsb(data.imm1));
+            break;
+        case 0x2D:  // SUB eAX, imm32  SUB AX, imm16
+            if (data.oprsz_pfx)
+                x86__mm_ax_imm16_sub(cpu, low16(data.imm1));
+            else
+                x86__mm_eax_imm32_sub(cpu, data.imm1);
+            break;
+        case 0x82:
+        case 0x80:  // SUB rm8, imm8
+            if (vaddr)
+                x86__mm_m8_imm8_sub(cpu, vaddr, lsb(data.imm1), data.lock);
+            else
+                x86__mm_r8_imm8_sub(cpu, effctvregister(data.modrm, 8), lsb(data.imm1));
+            break;
+        case 0x81:  // SUB rm32, imm32  SUB rm16, imm16
+            if (vaddr) {
+                if (data.oprsz_pfx)
+                    x86__mm_m16_imm16_sub(cpu, vaddr, low16(data.imm1), data.lock);
+                else
+                    x86__mm_m32_imm32_sub(cpu, vaddr, data.imm1, data.lock);
+            } else {
+                if (data.oprsz_pfx)
+                    x86__mm_r16_imm16_sub(cpu, effctvregister(data.modrm, 16), low16(data.imm1));
+                else
+                    x86__mm_r32_imm32_sub(cpu, effctvregister(data.modrm, 32), data.imm1);
+            }
+            break;
+        case 0x83:  // SUB rm32, imm8   SUB rm16, imm8
+            if (vaddr) {
+                if (data.oprsz_pfx)
+                    x86__mm_m16_imm16_sub(cpu, vaddr, sign8to16(data.imm1), data.lock);
+                else
+                    x86__mm_m32_imm32_sub(cpu, vaddr, sign8to32(data.imm1), data.lock);
+            } else {
+                if (data.oprsz_pfx)
+                    x86__mm_r16_imm16_sub(cpu, effctvregister(data.modrm, 16), sign8to16(data.imm1));
+                else
+                    x86__mm_r32_imm32_sub(cpu, effctvregister(data.modrm, 32), sign8to32(data.imm1));
+            }
+            break;
+
+        case 0x28:  // SUB rm8, r8
+            if (vaddr)
+                x86__mm_m8_imm8_sub(cpu, vaddr, reg(data.modrm), data.lock);
+            else
+                x86__mm_r8_imm8_sub(cpu, effctvregister(data.modrm, 8), reg(data.modrm));
+            break;
+        case 0x29:  // SUB rm32, r32    SUB rm16, r16
+            if (vaddr) {
+                if (data.oprsz_pfx)
+                    x86__mm_m16_r16_sub(cpu, vaddr, reg(data.modrm), data.lock);
+                else
+                    x86__mm_m32_r32_sub(cpu, vaddr, reg(data.modrm), data.lock);
+            } else {
+                if (data.oprsz_pfx)
+                    x86__mm_r16_r16_sub(cpu, effctvregister(data.modrm, 16), reg(data.modrm));
+                else
+                    x86__mm_r32_r32_sub(cpu, effctvregister(data.modrm, 32), reg(data.modrm));
+            }
+            break;
+        case 0x2A:  // SUB r8, rm8
+            if (vaddr)
+                x86__mm_r8_m8_sub(cpu, reg(data.modrm), vaddr, data.lock);
+            else
+                x86__mm_r8_r8_sub(cpu, reg(data.modrm), effctvregister(data.modrm, 8));
+            break;
+        case 0x2B: // SUB r32, rm32  SUB r16, rm16
+            if (vaddr) {
+                if (data.oprsz_pfx)
+                    x86__mm_r16_m16_sub(cpu, reg(data.modrm), vaddr, data.lock);
+                else
+                    x86__mm_r32_m32_sub(cpu, reg(data.modrm), vaddr, data.lock);
+            } else {
+                if (data.oprsz_pfx)
+                    x86__mm_r16_r16_sub(cpu, reg(data.modrm), effctvregister(data.modrm, 16));
+                else
+                    x86__mm_r32_r32_sub(cpu, reg(data.modrm), effctvregister(data.modrm, 32));
+            }
+            break;
+    }
 }
 
 
@@ -5090,13 +5402,69 @@ void x86_sysret(void *cpu, struct exec_data data)
 }
 
 
-void x86_test(void *cpu, struct exec_data data)
+void x86_mm_test(void *cpu, struct exec_data data)
 {
-    (void)cpu, (void)data;
+    if (data.lock)
+        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
 
-    
-    x86_stopcpu(cpu);
-    s_error(1, "emulator: Instruction %s not implemented", __FUNCTION__);
+    moffset32_t vaddr;
+
+    if (data.adrsz_pfx)
+        vaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
+    else
+        vaddr = x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset);
+
+    switch (data.opc) {
+        case 0xA8:  // TEST AL, imm8
+            x86__mm_al_imm8_test(cpu, lsb(data.imm1));
+            break;
+        case 0xA9: // TEST EAX, imm32   AX, imm16
+            if (data.oprsz_pfx)
+                x86__mm_ax_imm16_test(cpu, low16(data.imm1));
+            else
+                x86__mm_eax_imm32_test(cpu, data.imm1);
+            break;
+        case 0xF6:  // TEST r/m8, imm8
+            if (vaddr)
+                x86__mm_m8_imm8_test(cpu, vaddr, lsb(data.imm1));
+            else
+                x86__mm_r8_imm8_test(cpu, effctvregister(data.modrm, 8), lsb(data.imm1));
+            break;
+        case 0xF7: // TEST r/m32, imm32      TEST r/m16, imm16
+            if (vaddr) {
+                if (data.oprsz_pfx)
+                    x86__mm_m16_imm16_test(cpu, vaddr, low16(data.imm1));
+                else
+                    x86__mm_m32_imm32_test(cpu, vaddr, data.imm1);
+            } else {
+                if (data.oprsz_pfx) {
+                    x86__mm_r16_imm16_test(cpu, effctvregister(data.modrm, 16), low16(data.imm1));
+                } else {
+                    x86__mm_r32_imm32_test(cpu, effctvregister(data.modrm, 32), data.imm1);
+                }
+            }
+            break;
+        case 0x84:  // TEST r/m8, r8
+            if (vaddr)
+                x86__mm_m8_r8_test(cpu, vaddr, reg(data.modrm));
+            else
+                x86__mm_r8_r8_test(cpu, effctvregister(data.modrm, 8), reg(data.modrm));
+            break;
+        case 0x85:  // TEST r/m32, r32   TEST r/m16, r16
+            if (vaddr) {
+                if (data.oprsz_pfx)
+                    x86__mm_m16_r16_test(cpu, vaddr, reg(data.modrm));
+                else
+                    x86__mm_m32_r32_test(cpu, vaddr, reg(data.modrm));
+            } else {
+                if (data.oprsz_pfx)
+                    x86__mm_r16_r16_test(cpu, effctvregister(data.modrm, 16), reg(data.modrm));
+                else
+                    x86__mm_r32_r32_test(cpu, effctvregister(data.modrm, 32), reg(data.modrm));
+            }
+            break;
+
+    }
 }
 
 
@@ -5331,90 +5699,87 @@ void x86_xlat(void *cpu, struct exec_data data)
 
 void x86_mm_xor(void *cpu, struct exec_data data)
 {
-    moffset32_t effctvaddr;
-
-    x86_clearflag(cpu, OF);
-    x86_clearflag(cpu, CF);
+    moffset32_t vaddr;
 
     if (data.adrsz_pfx)
-        effctvaddr = x86_effctvaddr16(cpu, data.modrm, low16(data.moffset));
+        vaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
     else
-        effctvaddr = x86_effctvaddr32(cpu, data.modrm, data.sib, data.moffset);
+        vaddr = x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset);
 
     switch (data.opc) {
         case 0x30:  // r/m8, r8
-            if (!effctvaddr) {
+            if (!vaddr) {
                 if (data.lock)
-                    x86_raise_exception(cpu, INT_UD);
-                x86__mm_r8_r8_xor(cpu, effctvregister(data.modrm), reg(data.modrm));
+                    x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
+                x86__mm_r8_r8_xor(cpu, effctvregister(data.modrm, 8), reg(data.modrm));
             } else {
-                x86__mm_m8_r8_xor(cpu, effctvaddr, reg(data.modrm), data.lock);
+                x86__mm_m8_r8_xor(cpu, vaddr, reg(data.modrm), data.lock);
             }
             break;
         case 0x31:  // r/m32, r32   r/m16, r16
             if (data.oprsz_pfx) {
-                if (!effctvaddr) {
+                if (!vaddr) {
                     if (data.lock)
-                        x86_raise_exception(cpu, INT_UD);
+                        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
 
-                    x86__mm_r16_r16_xor(cpu, effctvregister(data.modrm), reg(data.modrm));
+                    x86__mm_r16_r16_xor(cpu, effctvregister(data.modrm, 16), reg(data.modrm));
                 } else {
-                    x86__mm_m16_r16_xor(cpu, effctvaddr, reg(data.modrm), data.lock);
+                    x86__mm_m16_r16_xor(cpu, vaddr, reg(data.modrm), data.lock);
                 }
             } else {
-                if (!effctvaddr) {
+                if (!vaddr) {
                     if (data.lock)
-                        x86_raise_exception(cpu, INT_UD);
+                        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
 
-                    x86__mm_r32_r32_xor(cpu, effctvregister(data.modrm), reg(data.modrm));
+                    x86__mm_r32_r32_xor(cpu, effctvregister(data.modrm, 32), reg(data.modrm));
                 } else {
-                    x86__mm_m32_r32_xor(cpu, effctvaddr, reg(data.modrm), data.lock);
+                    x86__mm_m32_r32_xor(cpu, vaddr, reg(data.modrm), data.lock);
                 }
             }
 
             break;
         case 0x32: // r8, r/m8
-            if (!effctvaddr) {
+            if (!vaddr) {
                 if (data.lock)
-                    x86_raise_exception(cpu, INT_UD);
+                    x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
 
-                x86__mm_r8_r8_xor(cpu, reg(data.modrm), effctvregister(data.modrm));
+                x86__mm_r8_r8_xor(cpu, reg(data.modrm), effctvregister(data.modrm, 8));
             } else {
-                x86__mm_r8_m8_xor(cpu, reg(data.modrm), effctvaddr, data.lock);
+                x86__mm_r8_m8_xor(cpu, reg(data.modrm), vaddr, data.lock);
             }
             break;
         case 0x33: // r32, r/m32    r16, r/m16
 
             if (data.oprsz_pfx) {
-                if (!effctvaddr) {
+                if (!vaddr) {
                     if (data.lock)
-                        x86_raise_exception(cpu, INT_UD);
+                        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
 
-                    x86__mm_r16_r16_xor(cpu, reg(data.modrm), effctvregister(data.modrm));
+                    x86__mm_r16_r16_xor(cpu, reg(data.modrm), effctvregister(data.modrm, 16));
                 } else {
-                    x86__mm_r16_m16_xor(cpu, reg(data.modrm), effctvaddr, data.lock);
+                    x86__mm_r16_m16_xor(cpu, reg(data.modrm), vaddr, data.lock);
                 }
             } else {
-                if (!effctvaddr) {
+                if (!vaddr) {
                     if (data.lock)
-                        x86_raise_exception(cpu, INT_UD);
+                        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
 
-                    x86__mm_r32_r32_xor(cpu, reg(data.modrm), effctvregister(data.modrm));
+                    x86__mm_r32_r32_xor(cpu, reg(data.modrm), effctvregister(data.modrm, 32));
                 } else {
-                    x86__mm_r32_m32_xor(cpu, reg(data.modrm), effctvaddr, data.lock);
+                    x86__mm_r32_m32_xor(cpu, reg(data.modrm), vaddr, data.lock);
                 }
             }
 
             break;
         case 0x34: // AL, imm8
             if (data.lock)
-                x86_raise_exception(cpu, INT_UD);
+                x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
 
             x86__mm_al_imm8_xor(cpu, lsb(data.imm1));
             break;
         case 0x35: // eAX, imm32    AX, imm16
             if (data.lock)
-                x86_raise_exception(cpu, INT_UD);
+                x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
 
             if (data.oprsz_pfx)
                 x86__mm_ax_imm16_xor(cpu, low16(data.imm1));
@@ -5423,35 +5788,35 @@ void x86_mm_xor(void *cpu, struct exec_data data)
             break;
         case 0x80: // r/m8, imm8
         case 0x82:
-            if (!effctvaddr)
-                x86__mm_r8_imm8_xor(cpu, effctvregister(data.modrm), data.imm1);
+            if (!vaddr)
+                x86__mm_r8_imm8_xor(cpu, effctvregister(data.modrm, 8), data.imm1);
             else
-                x86__mm_m8_imm8_xor(cpu, effctvaddr, data.imm1, data.lock);
+                x86__mm_m8_imm8_xor(cpu, vaddr, data.imm1, data.lock);
             break;
         case 0x81: // r/m32, imm32  r/m16, imm16
-            if (!effctvaddr) {
+            if (!vaddr) {
                 if (data.oprsz_pfx)
-                    x86__mm_r16_imm16_xor(cpu, effctvregister(data.modrm), low16(data.imm1));
+                    x86__mm_r16_imm16_xor(cpu, effctvregister(data.modrm, 16), low16(data.imm1));
                 else
-                    x86__mm_r32_imm32_xor(cpu, effctvregister(data.modrm), data.imm1);
+                    x86__mm_r32_imm32_xor(cpu, effctvregister(data.modrm, 32), data.imm1);
             } else {
                 if (data.oprsz_pfx)
-                    x86__mm_m16_imm16_xor(cpu, effctvaddr, low16(data.imm1), data.lock);
+                    x86__mm_m16_imm16_xor(cpu, vaddr, low16(data.imm1), data.lock);
                 else
-                    x86__mm_m32_imm32_xor(cpu, effctvaddr, data.imm1, data.lock);
+                    x86__mm_m32_imm32_xor(cpu, vaddr, data.imm1, data.lock);
             }
             break;
         case 0x83: // r/m32, imm8   r/m16, imm8
-            if (!effctvaddr) {
+            if (!vaddr) {
                 if (data.oprsz_pfx)
-                    x86__mm_r16_imm16_xor(cpu, effctvregister(data.modrm), zeroxtnd8to16(data.imm1));
+                    x86__mm_r16_imm16_xor(cpu, effctvregister(data.modrm, 16), zeroxtnd8to16(data.imm1));
                 else
-                    x86__mm_r32_imm32_xor(cpu, effctvregister(data.modrm), zeroxtnd8(data.imm1));
+                    x86__mm_r32_imm32_xor(cpu, effctvregister(data.modrm, 32), zeroxtnd8(data.imm1));
             } else {
                 if (data.oprsz_pfx)
-                    x86__mm_m16_imm16_xor(cpu, effctvaddr, zeroxtnd8to16(data.imm1), data.lock);
+                    x86__mm_m16_imm16_xor(cpu, vaddr, zeroxtnd8to16(data.imm1), data.lock);
                 else
-                    x86__mm_m32_imm32_xor(cpu, effctvaddr, zeroxtnd8(data.imm1), data.lock);
+                    x86__mm_m32_imm32_xor(cpu, vaddr, zeroxtnd8(data.imm1), data.lock);
             }
             break;
     }

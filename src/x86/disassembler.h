@@ -34,7 +34,7 @@ struct instruction x86_decode(x86MMU *, moffset32_t);
 // finds the last instruction before the given address
 moffset32_t x86_decodeuntil(x86MMU *, moffset32_t, moffset32_t);
 // find the target address of a call
-moffset32_t x86_findcalltarget(void *cpu, struct exec_data data);
+moffset32_t x86_findbranchtarget(void *cpu, struct exec_data data);
 char *x86_disassemble(struct instruction);
 
 #endif /* DISASSEMBLER_H */

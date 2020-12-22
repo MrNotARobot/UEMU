@@ -70,7 +70,7 @@ enum x86MMUStackFlags {
 };
 
 // map the loadable segments from the file detailed by the GenericELF struct
-void mmu_mmap_loadable(x86MMU *, GenericELF *g_elf);
+void mmu_mmap_loadable(x86MMU *, GenericELF *);
 
 uint8_t mmu_fetch(x86MMU *, moffset32_t);
 
@@ -89,5 +89,6 @@ const uint8_t *mmu_getptr(x86MMU *, moffset32_t);
 
 _Bool mmu_isdataptr(x86MMU *, moffset32_t);
 _Bool mmu_iscodeptr(x86MMU *, moffset32_t);
+_Bool mmu_isstackptr(x86MMU *, moffset32_t);
 
 #endif /* X86_MMU_H */

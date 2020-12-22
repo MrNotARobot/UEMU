@@ -52,9 +52,12 @@ static void fetch_symbolname(sym_resolver_t *, sym_map_t *);
 static mem_region_t *findregion(sym_resolver_t *, moffset32_t);
 static sym_record_t *findprev_lastrecord(mem_region_t *, size_t);
 
+// debug functions
 static void dump_zone(sym_resolver_t *, mem_zone_t *, size_t);
+static void dump_strtab(sym_resolver_t *);
 
-static _Bool conf_resolver_debug_mode = 0;
+static _Bool conf_resolver_debug_mode_dump_zone = 0;
+static _Bool conf_resolver_debug_mode_dump_strtab = 0;
 
 ///////////////
 
@@ -213,10 +216,6 @@ static void add2zone(mem_region_t *region, sym_map_t *symbol)
     temp.r_sym = symbol;
     temp.r_end = symbol->fr_start + symbol->fr_size;
 
-    // set the end of the previous record to the new record
-    if (current_symbol_index > 0)
-        zone->mz_low[current_symbol_index-1].r_end = temp.r_offset;
-
     // move all from current_symbol_index forward
     for (size_t i = current_symbol_index; i < zone->mz_nrecords; i++) {
         sym_record_t old = zone->mz_low[i];
@@ -276,6 +275,8 @@ int sr_loadcache(sym_resolver_t *resolver, const char *executable)
     for (size_t i = 0; i < resolver->sr_symtabsz; i++)
         add2region(resolver, &resolver->sr_symtab[i]);
 
+    resolver->sr_strtab = NULL;
+    resolver->sr_strtabsz = 0;
     return 1;
 read_fail:
     close(fd);
@@ -291,11 +292,11 @@ void sr_closecache(sym_resolver_t *resolver)
         for (size_t k = 0; k < resolver->sr_regions[i].mr_nzones; k++) {
             xfree(resolver->sr_regions[i].mr_zones[k].mz_low);
         }
-<<<<<<< HEAD
-=======
         xfree(resolver->sr_regions[i].mr_zones);
->>>>>>> x86MMU
     }
+
+    for (size_t i = 0; i < resolver->sr_strtabsz; i++)
+        xfree(resolver->sr_strtab[i]);
 
     close(resolver->sr_fd);
     xfree(resolver->sr_regions);
@@ -309,10 +310,11 @@ void sr_closecache(sym_resolver_t *resolver)
 
 static void fetch_symbolname(sym_resolver_t *resolver, sym_map_t *symbol)
 {
-    size_t index = resolver->sr_strtabsz;
+    size_t index = 0;
     off_t offset = symbol->fr_strtaboff;
     _Bool found_null = 0;
     uint8_t byte = 0;
+    size_t size = 0;
 
     while (!found_null) {
         if (pread(resolver->sr_fd, &byte, 1, offset++) == -1)
@@ -321,12 +323,14 @@ static void fetch_symbolname(sym_resolver_t *resolver, sym_map_t *symbol)
         if (!byte)
             found_null = 1;
 
-        resolver->sr_strtab = xreallocarray(resolver->sr_strtab, ++resolver->sr_strtabsz, sizeof(*resolver->sr_strtab));
+        symbol->fr_sym = xreallocarray(symbol->fr_sym, ++size, sizeof(*symbol->fr_sym));
 
-        resolver->sr_strtab[resolver->sr_strtabsz-1] = byte;
+        symbol->fr_sym[index++] = byte;
     }
 
-    symbol->fr_sym = &resolver->sr_strtab[index];
+    resolver->sr_strtab = xreallocarray(resolver->sr_strtab, ++resolver->sr_strtabsz, sizeof(*resolver->sr_strtab));
+    resolver->sr_strtab[resolver->sr_strtabsz-1] = symbol->fr_sym;
+
 }
 
 static mem_region_t *findregion(sym_resolver_t *resolver, moffset32_t vaddr)
@@ -373,7 +377,7 @@ struct symbol_lookup_record sr_lookup(sym_resolver_t *resolver, moffset32_t vadd
 
     off_in_zone = moffset16(vaddr) - moffset16(zone->mz_base);
 
-    if (conf_resolver_debug_mode)
+    if (conf_resolver_debug_mode_dump_zone)
         dump_zone(resolver, zone, zone_idx);
 
     // there might not be a single record in the zone
@@ -406,12 +410,15 @@ struct symbol_lookup_record sr_lookup(sym_resolver_t *resolver, moffset32_t vadd
 
     for (size_t i = 0; i < max; i++) {
 
-        // this will not pass if the record is the last in the zone as we do not have
-        // access to the next zone's first record's offset. So if the record is NULL
-        // when getting out of loop, then our symbol is at the last record
-        if (off_in_zone >= records[i].r_offset && vaddr < records[i].r_end) {
-            symbol = records[i].r_sym;
+        if (vaddr == 0x0804a7f7 || vaddr == 0x0804a7fa)
+            s_info("%08x %08x", records[i].r_offset, records[i].r_end);
+
+        if (symbol && off_in_zone < records[i].r_offset)
             break;
+
+        if (off_in_zone >= records[i].r_offset) {
+            symbol = records[i].r_sym;
+            continue;
         }
 
     }
@@ -422,6 +429,8 @@ struct symbol_lookup_record sr_lookup(sym_resolver_t *resolver, moffset32_t vadd
     if (!symbol->fr_sym)
         fetch_symbolname(resolver, symbol);
 
+    if (conf_resolver_debug_mode_dump_strtab)
+        dump_strtab(resolver);
 
     return (struct symbol_lookup_record){symbol->fr_sym, symbol->fr_start, symbol->fr_start + symbol->fr_size};
 
@@ -433,14 +442,32 @@ struct symbol_lookup_record sr_lookup(sym_resolver_t *resolver, moffset32_t vadd
 
 static void dump_zone(sym_resolver_t *resolver, mem_zone_t *zone, size_t zone_index)
 {
-    s_info("==== [%02ld:zone START] ====  records: %02ld base: 0x%08x divline: 0x%04x mop: %ld", zone_index, zone->mz_nrecords, zone->mz_base, zone->mz_divline, zone->mz_mop);
+    s_info("==== [%02ld:zone START] ====  records: %02ld base: 0x%08x divline: 0x%04x mop: %ld",
+            zone_index, zone->mz_nrecords, zone->mz_base, zone->mz_divline, zone->mz_mop);
     for (size_t i = 0; i < zone->mz_nrecords; i++) {
         sym_record_t *record = &zone->mz_low[i];
         if (!record->r_sym->fr_sym)
             fetch_symbolname(resolver, record->r_sym);
 
-        s_info("[%02ld:zone] record: %02ld offset: 0x%04x end: 0x%04x symbol: %s size: %ld", zone_index, i, record->r_offset, record->r_end, record->r_sym->fr_sym, record->r_sym->fr_size);
+        s_info("[%02ld:zone] record: %02ld offset: 0x%04x end: 0x%04x symbol: %s size: %ld", zone_index, i,
+                record->r_offset, record->r_end, record->r_sym->fr_sym, record->r_sym->fr_size);
     }
 
     s_info("==== [%ld:zone END] ====", zone_index);
+}
+
+static void dump_strtab(sym_resolver_t *resolver)
+{
+    s_info("==== [string table BEGIN] ====");
+
+    if (!resolver->sr_strtab) {
+        s_info("==== [string table END] ====");
+        return;
+    }
+
+    for (size_t i = 0; i < resolver->sr_strtabsz; i++) {
+        s_info("%s\\0", resolver->sr_strtab[i]);
+    }
+
+    s_info("==== [string table END] ====");
 }

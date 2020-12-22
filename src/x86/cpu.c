@@ -84,7 +84,6 @@ void x86_stopcpu(x86CPU *cpu)
     mmu_unloadall(&cpu->mmu);
 
     xfree(cpu->cpustat.callstack);
-    xfree(cpu);
 }
 
 // exception handling
@@ -103,14 +102,14 @@ void x86_raise_exception(x86CPU *cpu, int exct)
     switch (exct) {
         case INT_UD:
             if (errstr) {
-                s_error(1, "emulator: Invalid Instruction at 0x%08x (%s)", saved_eip, errstr);
+                s_error(1, "emulator: Invalid Instruction at 0x%08x (%s)", faulty_addr, errstr);
             } else {
                 s_error(1, "emulator: Invalid Instruction at 0x%08x", saved_eip);
             }
             break;
         case INT_PF:
             if (errstr) {
-                s_error(1, "emulator: Page Fault (%s)", errstr);
+                s_error(1, "emulator: Page Fault at 0x%08x (%s)", faulty_addr, errstr);
             } else {
                 s_error(1, "emulator: Page Fault at 0x%08x", faulty_addr);
             }
@@ -292,6 +291,9 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
     }
 
     argc--; // we don't use argv[0]
+    argv[1] = realpath(argv[1], NULL);
+    if (!argv[1])
+        argv[1] = find_executable(argv[1]);
 
     for (size_t i = 0; envp[i] != NULL; i++)
         environsz++;
@@ -347,6 +349,7 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
     x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) - 4);
     x86_wrmem32(cpu, cpu->ESP, argc);
 
+    xfree(argv[1]);
     xfree(environ_);
     xfree(argv_);
 }
@@ -358,7 +361,7 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
  */
 void x86_cpu_exec(char *executable, int argc, char *argv[], char **envp)
 {
-    x86CPU *cpu;
+    x86CPU cpu;
     struct instruction instr;
 
     instr.name = NULL;
@@ -370,57 +373,57 @@ void x86_cpu_exec(char *executable, int argc, char *argv[], char **envp)
     if (!executable || !argv || !envp)
         return;
 
-    cpu = xcalloc(1, sizeof(*cpu));
-    x86_startcpu(cpu);
+    memset(&cpu, 0, sizeof(cpu));
+    x86_startcpu(&cpu);
 
     // map the executable segments to memory.
     // no shared library is loaded just yet.
-    elf_load(&cpu->executable, executable);
-    if (elf_error(&cpu->executable)) {
-        x86_stopcpu(cpu);
-        s_error(1, "%s", elf_errstr(&cpu->executable));
+    elf_load(&cpu.executable, executable);
+    if (elf_error(&cpu.executable)) {
+        x86_stopcpu(&cpu);
+        s_error(1, "%s", elf_errstr(&cpu.executable));
     }
 
     // actually map the segments
-    mmu_mmap_loadable(&cpu->mmu, &cpu->executable);
-    if (mmu_error(&cpu->mmu)) {
-        x86_stopcpu(cpu);
-        s_error(1, "%s", mmu_errstr(&cpu->mmu));
+    mmu_mmap_loadable(&cpu.mmu, &cpu.executable);
+    if (mmu_error(&cpu.mmu)) {
+        x86_stopcpu(&cpu);
+        s_error(1, "%s", mmu_errstr(&cpu.mmu));
     }
 
-    sr_loadcache(x86_resolver(cpu), executable);
+    sr_loadcache(x86_resolver(&cpu), executable);
 
     // we don't need it anymore.
     xfree(executable);
 
     // create a stack
-    if (elf_execstack(&cpu->executable))
+    if (elf_execstack(&cpu.executable))
         stack_flags |= B_STACKEXEC;
 
-    x86_wrreg32(cpu, ESP, mmu_create_stack(&cpu->mmu, stack_flags));
+    x86_wrreg32(&cpu, ESP, mmu_create_stack(&cpu.mmu, stack_flags));
 
-    x86_cpustat_set(cpu, STAT_STACKTOP, x86_rdreg32(cpu, ESP));
+    x86_cpustat_set(&cpu, STAT_STACKTOP, x86_rdreg32(&cpu, ESP));
 
-    build_environment(cpu, argc, argv, envp);
+    build_environment(&cpu, argc, argv, envp);
 
-    x86_wrreg32(cpu, EIP, elf_entrypoint(x86_elf(cpu)));
+    x86_wrreg32(&cpu, EIP, elf_entrypoint(x86_elf(&cpu)));
 
-    x86_cpustat_push_callstack(cpu, x86_rdreg32(cpu, EIP));
+    x86_cpustat_push_callstack(&cpu, x86_rdreg32(&cpu, EIP));
 
     while (1) {
-        x86_cpustat_set(cpu, STAT_EIP, x86_rdreg32(cpu, EIP));
+        x86_cpustat_set(&cpu, STAT_EIP, x86_rdreg32(&cpu, EIP));
 
-        fetch(cpu, &instr);
+        fetch(&cpu, &instr);
 
-        x86_cpustat_set_current_op(cpu, instr);
-        x86_cpustat_update_callstack(cpu);
-        x86_cpustat_print(cpu);
+        x86_cpustat_set_current_op(&cpu, instr);
+        x86_cpustat_update_callstack(&cpu);
+        x86_cpustat_print(&cpu);
 
-        instr.handler(cpu, instr.data);
+        instr.handler(&cpu, instr.data);
         // TODO: handle exceptions? I think it would be cool to imitate a real x86 cpu
         // handling of exceptions
     }
 
-    x86_stopcpu(cpu);
+    x86_stopcpu(&cpu);
     exit(0);
 }

@@ -57,7 +57,6 @@ static void elf_load32(GenericELF *elf)
     Elf32_Phdr phdr;
     Elf32_Off phoff;
     int fd = elf->fd;
-    uint16_t nloadable = 0;
 
     if (pread(fd, &ehdr, sizeof(ehdr), 0) == -1) {
         elf_set_error(elf, errno,  "%s: %s", __FUNCTION__, strerror(errno));
@@ -75,6 +74,8 @@ static void elf_load32(GenericELF *elf)
 
     elf->machine = ehdr.e_machine;
 
+    elf->loadable = NULL;
+    elf->nloadable = 0;
     // first get the number of loadable (PT_LOAD) segments to allocate
     // space for those program headers
     phoff = ehdr.e_phoff;
@@ -85,32 +86,18 @@ static void elf_load32(GenericELF *elf)
             return;
         }
 
-        if (phdr.p_type == PT_LOAD)
-            nloadable++;
+        if (phdr.p_type == PT_LOAD) {
+            elf->nloadable++;
+            elf->loadable = xreallocarray(elf->loadable, elf->nloadable, sizeof(*elf->loadable));
+            elf->loadable[elf->nloadable-1].pt_filesz = phdr.p_filesz;
+            elf->loadable[elf->nloadable-1].pt_memsz = phdr.p_memsz;
+            elf->loadable[elf->nloadable-1].pt_vaddr = phdr.p_vaddr;
+            elf->loadable[elf->nloadable-1].pt_offset = phdr.p_offset;
+            elf->loadable[elf->nloadable-1].pt_flags = phdr.p_flags;
+        }
 
         if (phdr.p_type == PT_GNU_STACK)
             elf->execstack = phdr.p_flags & PF_X;
-    }
-
-    phoff = ehdr.e_phoff;
-
-    elf->nloadable = nloadable;
-    elf->loadable = (struct loadable_segment *)xcalloc(nloadable, sizeof(*elf->loadable));
-    for (uint16_t i = 0, k = 0; (k + 1) < nloadable; i++, phoff+=ehdr.e_phentsize) {
-
-        if (pread(fd, &phdr, sizeof(phdr), phoff) == -1) {
-            elf_set_error(elf, errno,  "%s: %s", __FUNCTION__, strerror(errno));
-            xfree(elf->loadable);
-            return;
-        }
-
-        if (phdr.p_type == PT_LOAD) {
-            elf->loadable[k].s_offset = phdr.p_offset;
-            elf->loadable[k].s_filesz = phdr.p_filesz;
-            elf->loadable[k].s_memsz = phdr.p_memsz;
-            elf->loadable[k].s_perms = phdr.p_flags;
-            elf->loadable[k++].s_vaddr = phdr.p_vaddr;
-        }
     }
 
     elf->entryp = ehdr.e_entry;
@@ -186,15 +173,9 @@ void elf_load(GenericELF *elf, const char *executable)
     }
 
     if (e_ident[EI_CLASS] == ELFCLASS32) {
-<<<<<<< HEAD
-        elf_load32(g_elf);
-    } else if (e_ident[EI_CLASS] == ELFCLASS64) {
-        elf_load64(g_elf);
-=======
         elf_load32(elf);
     } else if (e_ident[EI_CLASS] == ELFCLASS64) {
         elf_load64(elf);
->>>>>>> x86MMU
     } else {
         elf_set_error(elf, UNSUPPORTED, "emulator: unsupported architecture (only 32-bit and 64-bit are supported)");
         close(fd);
@@ -210,16 +191,6 @@ void elf_load(GenericELF *elf, const char *executable)
 /*
  * Free allocated memory and close the underlying file descriptor.
  */
-<<<<<<< HEAD
-void g_elf_unload(GenericELF *g_elf)
-{
-    if (!g_elf)
-        return;
-
-    xfree(g_elf->g_name);
-    xfree(g_elf->g_loadable);
-    close(g_elf->g_fd);
-=======
 void elf_unload(GenericELF *elf)
 {
     ASSERT(elf != NULL);
@@ -227,6 +198,5 @@ void elf_unload(GenericELF *elf)
     xfree(elf->name);
     xfree(elf->loadable);
     close(elf->fd);
->>>>>>> x86MMU
 }
 

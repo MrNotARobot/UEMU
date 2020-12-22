@@ -34,16 +34,6 @@ typedef uint16_t moffset16_t;
 
 #define moffset16(addr) ((addr) & 0x0000FFFF)
 
-
-
-struct loadable_segment {
-    moffset32_t s_offset; // offset from the beggining of the file
-    moffset32_t s_vaddr; // the virtual address of the segment in memory
-    uint64_t s_filesz;  // the number of bytes in the file
-    uint64_t s_memsz;  // the number of bytes in memory
-    uint32_t s_perms;   // the permissions of the segment in memory
-};
-
 // I think this is small enough. Remember that this is a description, not a full log.
 #define ERROR_DESCRIPTION_MAX_SIZE 80
 struct error_description {

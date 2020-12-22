@@ -25,6 +25,58 @@
 
 #include "cpu.h"
 
+_Bool overflow8(uint8_t n1, uint8_t n2, uint8_t result)
+{
+    if (signbit8(n1) != signbit8(n2))
+        return 0;
+
+    if (signbit8(result) != signbit8(n1))
+        return 1;
+
+    return 0;
+}
+
+_Bool overflow16(uint16_t n1, uint16_t n2, uint16_t result)
+{
+    if (signbit16(n1) != signbit16(n2))
+        return 0;
+
+    if (signbit16(result) != signbit16(n1))
+        return 1;
+
+    return 0;
+}
+
+_Bool overflow32(uint32_t n1, uint32_t n2, uint32_t result)
+{
+    if (signbit32(n1) != signbit32(n2))
+        return 0;
+
+    if (signbit32(result) != signbit32(n1))
+        return 1;
+
+    return 0;
+}
+
+#define lownibble(byte)  (  (byte) & 0x0F  )
+#define highnibble(byte) (  (byte) & 0xF0  )
+
+_Bool auxcarry(uint8_t n1, uint8_t n2)
+{
+    if (highnibble(lownibble(n1) + lownibble(n2)))
+        return 1;
+
+    return 0;
+}
+
+_Bool auxborrow(uint8_t n1, uint8_t n2)
+{
+    if (lownibble(highnibble(n1) - highnibble(n2)))
+        return 1;
+
+    return 0;
+}
+
 inline _Bool parity_even(uint32_t bytes)
 {
     uint8_t lsb = bytes & 0x000000ff;
@@ -99,32 +151,53 @@ inline uint8_t reg8to32(uint8_t reg)
 inline uint8_t reg32to8(uint8_t reg)
 {
     switch (reg) {
-        case EAX: return AL; break;
-        case ECX: return CL; break;
-        case EDX: return DL; break;
-        case EBX:  return BL; break;
+        case EAX: return AL;
+        case ECX: return CL;
+        case EDX: return DL;
+        case EBX:  return BL;
+        case ESP: return AH;
+        case EBP: return CH;
+        case ESI: return DH;
+        case EDI: return BH;
         default: break;
     }
     return 0;
 }
 
-inline uint8_t effctvregister(uint8_t modrm)
+inline uint8_t effctvregister(uint8_t modrm, uint8_t size)
 {
     int reg = 0;
     uint8_t mod = mod(modrm);
     uint8_t rm = rm(modrm);
 
-    if (mod == 3) {
-        switch (rm) {
-            case 0b000: reg = EAX; break;
-            case 0b001: reg = ECX; break;
-            case 0b010: reg = EDX; break;
-            case 0b011: reg = EBX; break;
-            case 0b100: reg = ESP; break;
-            case 0b101: reg = EBP; break;
-            case 0b110: reg = ESI; break;
-            case 0b111: reg = EDI; break;
+    if (size == 8) {
+        if (mod == 3) {
+            switch (rm) {
+                case 0b000: reg = AL; break;
+                case 0b001: reg = CL; break;
+                case 0b010: reg = DL; break;
+                case 0b011: reg = BL; break;
+                case 0b100: reg = AH; break;
+                case 0b101: reg = CH; break;
+                case 0b110: reg = DH; break;
+                case 0b111: reg = BH; break;
+            }
         }
+
+    } else {
+        if (mod == 3) {
+            switch (rm) {
+                case 0b000: reg = EAX; break;
+                case 0b001: reg = ECX; break;
+                case 0b010: reg = EDX; break;
+                case 0b011: reg = EBX; break;
+                case 0b100: reg = ESP; break;
+                case 0b101: reg = EBP; break;
+                case 0b110: reg = ESI; break;
+                case 0b111: reg = EDI; break;
+            }
+        }
+
     }
 
     return reg;
@@ -156,73 +229,77 @@ inline const char *stringfyregister(uint8_t regstr, uint8_t size)
 }
 
 // translate a Mod/RM byte + optional immediate into an effective address
-moffset32_t x86_effctvaddr16(void *cpu, uint8_t modrm, uint32_t imm)
+moffset32_t x86_effectiveaddress16(void *cpu, uint8_t modrm, uint32_t imm)
 {
-    ASSERT(cpu != NULL);
     uint8_t mod = mod(modrm);
     uint8_t rm = rm(modrm);
-    moffset32_t effctvaddr = 0;
+    moffset32_t vaddr = 0;
+
+    if (!cpu)
+        return 0;
 
     if (mod == 0) {
         switch (rm) {
-            case 0b000: effctvaddr = x86_rdreg16(cpu, EBX) + x86_rdreg16(cpu, ESI); break;
-            case 0b001: effctvaddr = x86_rdreg16(cpu, EBX) + x86_rdreg16(cpu, EDI); break;
-            case 0b010: effctvaddr = x86_rdreg16(cpu, EBP) + x86_rdreg16(cpu, ESI); break;
-            case 0b011: effctvaddr = x86_rdreg16(cpu, EBP) + x86_rdreg16(cpu, EDI); break;
-            case 0b100: effctvaddr = x86_rdreg16(cpu, ESI); break;
-            case 0b101: effctvaddr = x86_rdreg16(cpu, EDI); break;
-            case 0b110: effctvaddr = imm; break;
-            case 0b111: effctvaddr = x86_rdreg16(cpu, EBX); break;
+            case 0b000: vaddr = x86_rdreg16(cpu, EBX) + x86_rdreg16(cpu, ESI); break;
+            case 0b001: vaddr = x86_rdreg16(cpu, EBX) + x86_rdreg16(cpu, EDI); break;
+            case 0b010: vaddr = x86_rdreg16(cpu, EBP) + x86_rdreg16(cpu, ESI); break;
+            case 0b011: vaddr = x86_rdreg16(cpu, EBP) + x86_rdreg16(cpu, EDI); break;
+            case 0b100: vaddr = x86_rdreg16(cpu, ESI); break;
+            case 0b101: vaddr = x86_rdreg16(cpu, EDI); break;
+            case 0b110: vaddr = imm; break;
+            case 0b111: vaddr = x86_rdreg16(cpu, EBX); break;
         }
     } else if (mod == 1 || mod == 2) {
         switch (rm) {
-            case 0b000: effctvaddr = x86_rdreg16(cpu, EBX) + imm; break;
-            case 0b001: effctvaddr = x86_rdreg16(cpu, EBX) + imm; break;
-            case 0b010: effctvaddr = x86_rdreg16(cpu, EBP) + imm; break;
-            case 0b011: effctvaddr = x86_rdreg16(cpu, EBP) + imm; break;
-            case 0b100: effctvaddr = x86_rdreg16(cpu, ESI) + imm; break;
-            case 0b101: effctvaddr = x86_rdreg16(cpu, EDI) + imm; break;
-            case 0b110: effctvaddr = x86_rdreg16(cpu, EBP) + imm; break;
-            case 0b111: effctvaddr = x86_rdreg16(cpu, EBX) + imm; break;
+            case 0b000: vaddr = x86_rdreg16(cpu, EBX) + imm; break;
+            case 0b001: vaddr = x86_rdreg16(cpu, EBX) + imm; break;
+            case 0b010: vaddr = x86_rdreg16(cpu, EBP) + imm; break;
+            case 0b011: vaddr = x86_rdreg16(cpu, EBP) + imm; break;
+            case 0b100: vaddr = x86_rdreg16(cpu, ESI) + imm; break;
+            case 0b101: vaddr = x86_rdreg16(cpu, EDI) + imm; break;
+            case 0b110: vaddr = x86_rdreg16(cpu, EBP) + imm; break;
+            case 0b111: vaddr = x86_rdreg16(cpu, EBX) + imm; break;
         }
     } // mod == 3 are registers, so we return zero
 
-    return effctvaddr;
+    return vaddr;
 }
 
 // translate a Mod/RM byte + optional immediate/SIB into an effective address
-moffset32_t x86_effctvaddr32(void *cpu, uint8_t modrm, uint8_t sib, uint32_t imm)
+moffset32_t x86_effectiveaddress32(void *cpu, uint8_t modrm, uint8_t sib, uint32_t imm)
 {
-    ASSERT(cpu != NULL);
     uint8_t mod = mod(modrm);
     uint8_t rm = rm(modrm);
-    moffset32_t effctvaddr = 0;
+    moffset32_t vaddr = 0;
     _Bool use_sib = 0;
     uint8_t ss_factor = sibss(sib);
     uint8_t index = sibindex(sib);
     uint8_t base = sibbase(sib);
 
+    if (!cpu)
+        return 0;
+
     if (mod == 0) {
         switch (rm) {
-            case 0b000: effctvaddr = x86_rdreg32(cpu, EAX); break;
-            case 0b001: effctvaddr = x86_rdreg32(cpu, ECX); break;
-            case 0b010: effctvaddr = x86_rdreg32(cpu, EDX); break;
-            case 0b011: effctvaddr = x86_rdreg32(cpu, EBX); break;
+            case 0b000: vaddr = x86_rdreg32(cpu, EAX); break;
+            case 0b001: vaddr = x86_rdreg32(cpu, ECX); break;
+            case 0b010: vaddr = x86_rdreg32(cpu, EDX); break;
+            case 0b011: vaddr = x86_rdreg32(cpu, EBX); break;
             case 0b100: use_sib = 1; break;
-            case 0b101: effctvaddr = x86_rdreg32(cpu, EIP) + imm; break;
-            case 0b110: effctvaddr = x86_rdreg32(cpu, ESI); break;
-            case 0b111: effctvaddr = x86_rdreg32(cpu, EDI); break;
+            case 0b101: vaddr = x86_rdreg32(cpu, EIP) + imm; break;
+            case 0b110: vaddr = x86_rdreg32(cpu, ESI); break;
+            case 0b111: vaddr = x86_rdreg32(cpu, EDI); break;
         }
     } else if (mod == 1 || mod == 2) {
         switch (rm) {
-            case 0b000: effctvaddr = x86_rdreg32(cpu, EAX) + imm; break;
-            case 0b001: effctvaddr = x86_rdreg32(cpu, ECX) + imm; break;
-            case 0b010: effctvaddr = x86_rdreg32(cpu, EDX) + imm; break;
-            case 0b011: effctvaddr = x86_rdreg32(cpu, EBX) + imm; break;
+            case 0b000: vaddr = x86_rdreg32(cpu, EAX) + imm; break;
+            case 0b001: vaddr = x86_rdreg32(cpu, ECX) + imm; break;
+            case 0b010: vaddr = x86_rdreg32(cpu, EDX) + imm; break;
+            case 0b011: vaddr = x86_rdreg32(cpu, EBX) + imm; break;
             case 0b100: use_sib = 1; break;
-            case 0b101: effctvaddr = x86_rdreg32(cpu, EBP) + imm; break;
-            case 0b110: effctvaddr = x86_rdreg32(cpu, ESI) + imm; break;
-            case 0b111: effctvaddr = x86_rdreg32(cpu, EDI) + imm; break;
+            case 0b101: vaddr = x86_rdreg32(cpu, EBP) + imm; break;
+            case 0b110: vaddr = x86_rdreg32(cpu, ESI) + imm; break;
+            case 0b111: vaddr = x86_rdreg32(cpu, EDI) + imm; break;
         }
     } // mod == 3 are registers, so we return zero
 
@@ -238,19 +315,27 @@ moffset32_t x86_effctvaddr32(void *cpu, uint8_t modrm, uint8_t sib, uint32_t imm
 
         if (base == EBP) {
             if (index != 0b100)
-                effctvaddr = x86_rdmem32(cpu, x86_rdreg32(cpu, index) * ss_factor);
+                vaddr = x86_rdmem32(cpu, x86_rdreg32(cpu, index) * ss_factor);
 
-            effctvaddr += imm;
+            if (mod == 1)
+                vaddr += lsb(imm);
+            else
+                vaddr += imm;
 
-                if (mod)
-                    effctvaddr += x86_rdreg32(cpu, EBP);
+            if (mod)
+                vaddr += x86_rdreg32(cpu, EBP);
         } else {
             if (index != 0b100)
-                effctvaddr = x86_rdmem32(cpu, x86_rdreg32(cpu, index) * ss_factor);
-            effctvaddr += x86_rdreg32(cpu, base);
+                vaddr = x86_rdmem32(cpu, x86_rdreg32(cpu, index) * ss_factor);
+            vaddr += x86_rdreg32(cpu, base);
+
+            if (mod == 1)
+                vaddr += lsb(imm);
+            else if (mod == 2)
+                vaddr += imm;
         }
 
     }
 
-    return effctvaddr;
+    return vaddr;
 }

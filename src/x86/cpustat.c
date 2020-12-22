@@ -33,9 +33,10 @@
 #include "cpustat.h"
 #include "cpu.h"
 
+static _Bool ptr_has_string(void *, moffset32_t);
 static void print_register(void *, uint8_t);
 static char *getptrcontent(void *, moffset32_t);
-static char *add_call_target_to_instruction(moffset32_t, struct symbol_lookup_record, char *);
+static char *add_branch_target_to_instruction(moffset32_t, struct symbol_lookup_record, char *);
 static char *disassembleptr(void *, moffset32_t);
 static void print_eflags(void *);
 
@@ -48,9 +49,22 @@ static const char *conf_x86_cpustat_stack_color = "\033[1;33m";
 static const char *conf_x86_cpustat_arrow_right = "\033[0m\033[1m ─▶ \033[1m";
 static const char *conf_x86_cpustat_arrow_left = "\033[0m\033[1m ◀─ \033[1m";
 static size_t conf_x86_cpustat_maxptrs = 4;
-static size_t conf_x86_cpustat_maxstrsz = 100;
 static size_t conf_x86_cpustat_stack_entries = 7;
 
+
+static _Bool ptr_has_string(void *cpu, moffset32_t vaddr)
+{
+    // TODO: internationalization! change this to check for utf-8
+    // should be enough to determine if it points to a string
+    // chances are pretty low that four random bytes will happen
+    // to be all ascii
+    for (size_t i = 0; i < sizeof(moffset32_t); i++) {
+        if (!isprint(x86_rdmem8(cpu, vaddr+i)))
+            return 0;
+    }
+
+    return 1;
+}
 
 static void print_register(void *cpu, uint8_t reg)
 {
@@ -62,114 +76,97 @@ static void print_register(void *cpu, uint8_t reg)
     if (reg == EIP)
         value = x86_cpustat_query(cpu, STAT_EIP);
 
-    if (mmu_isdataptr(x86_mmu(cpu), value)) {
-        content = getptrcontent(cpu, value);
-    } else if (mmu_iscodeptr(x86_mmu(cpu), value)) {
-        content = disassembleptr(cpu, value);
-    } else {
-        content = int2hexstr(value, 8);
-    }
+    content = getptrcontent(cpu, value);
 
     s_info("%s%s:\033[0m %s \033[0m", conf_x86_cpustat_register_color, stringfyregister(reg, 32), content);
 
     xfree(content);
 }
 
-static char *getptrcontent(void *cpu, moffset32_t effctvaddr)
+static char *getptrcontent(void *cpu, moffset32_t vaddr)
 {
     static char *s = NULL;
-    size_t size;
-    moffset32_t ptr = effctvaddr;
-    char *ptrstr = int2hexstr(ptr, 8);
+    moffset32_t ptr = vaddr;
+    char *ptrstr = NULL;
     size_t nptrs = 1;
     const char *data_color = conf_x86_cpustat_data_color;
+    const char *stack_color = conf_x86_cpustat_stack_color;
     const char *arrow_r = conf_x86_cpustat_arrow_right;
     const char *arrow_l = conf_x86_cpustat_arrow_left;
 
-    if (effctvaddr >= x86_rdreg32(cpu, ESP) && effctvaddr < x86_cpustat_query(cpu, STAT_STACKTOP))
-        data_color = conf_x86_cpustat_stack_color;
-
-    size = strlen(data_color) + strlen(ptrstr) + strlen("\033[0m");
-    s = xcalloc(size + 1, sizeof(*s));
-
-    coolstrcat(s, 3, data_color, ptrstr, "\033[0m");
-
-    xfree(ptrstr);
-
-    while (1) {
-        ptr = x86_rdmem32(cpu, ptr);
-
-        // print a address
-        if (mmu_isdataptr(x86_mmu(cpu), ptr)) {
-            size_t catsize;
-            if (nptrs == conf_x86_cpustat_maxptrs) {
-                catsize = strlen(arrow_r) + strlen("...") + strlen("\033[0m");
-                s = xreallocarray(s, size + catsize + 1, sizeof(*s));
-
-                coolstrcat(s, 3, arrow_r, "...", "\033[0m");
-                break;
-            }
-            ptrstr = int2hexstr(ptr, 8);
-            catsize = strlen(arrow_r) + strlen(data_color) + strlen(ptrstr) + strlen("\033[0m");
-
-            s = xreallocarray(s, size + catsize + 1, sizeof(*s));
-            size += catsize;
-
-            coolstrcat(s, 4, arrow_r, data_color, ptrstr, "\033[0m");
-
-            xfree(ptrstr);
-            nptrs++;
-        }
+    s = xstrdup("");
+    for (;;ptr = x86_rdmem32(cpu, ptr)) {
 
         // try and see if there is a string
-        if (mmu_isdataptr(x86_mmu(cpu), ptr) && isprint(x86_rdmem8(cpu, ptr))) {
-            // TODO: internationalization! change this to check for utf-8
+        if (mmu_isdataptr(x86_mmu(cpu), ptr) && ptr_has_string(cpu, ptr)) {
             const char *str = (const char *)mmu_getptr(x86_mmu(cpu), ptr);
-            size_t strsz = strlen(str);
-            size_t catsize;
+            ptrstr = int2hexstr(ptr, 8);
+            char *temp = s;
 
-            // this will let the string be something like
-            // 0xffffffff ◀- 'this is a looooooooooooooooooong string...'
-            if (strsz > conf_x86_cpustat_maxstrsz)
-                strsz = conf_x86_cpustat_maxstrsz;
+            if (mmu_isstackptr(x86_mmu(cpu), ptr))
+                s = strcatall(7, s, stack_color, ptrstr, arrow_l, "'\033[0m", str, "'");
+            else
+                s = strcatall(7, s, data_color, ptrstr, arrow_l, "'\033[0m", str, "'");
 
-            catsize = strlen(arrow_l) + strlen("'\033[0m") + strsz + 1;
-            s = xreallocarray(s, size + catsize + 1, sizeof(*s));
+            xfree(temp);
+            xfree(ptrstr);
+            break;
+        }
 
-            coolstrcat(s, 2, arrow_l, "'\033[0m");
-            strncat(s, str, strsz);
-
-            size += catsize;
-            s[size-1] = '\'';
-
-            if (strsz == 80) {
-                s[size-2] = '.';
-                s[size-3] = '.';
-                s[size-4] = '.';
+        if (mmu_isstackptr(x86_mmu(cpu), ptr)) {
+            if (nptrs == conf_x86_cpustat_maxptrs) {
+                s = strcatall(4, s, arrow_r, "...", "\033[0m");
+                break;
             }
+
+            char *temp = s;
+            ptrstr = int2hexstr(ptr, 8);
+
+            s = strcatall(5, s, stack_color, ptrstr, arrow_r, "\033[0m");
+
+            xfree(temp);
+            xfree(ptrstr);
+            nptrs++;
+        } else if (mmu_isdataptr(x86_mmu(cpu), ptr)) {
+            if (nptrs == conf_x86_cpustat_maxptrs) {
+                s = strcatall(4, s, arrow_r, "...", "\033[0m");
+                break;
+            }
+            char *temp = s;
+            ptrstr = int2hexstr(ptr, 8);
+            struct symbol_lookup_record symbol = sr_lookup(x86_resolver(cpu), ptr);
+            s = strcatall(8, s, data_color, ptrstr, " <", symbol.sl_name, ">", arrow_r, "\033[0m");
+
+            xfree(temp);
+            xfree(ptrstr);
+            nptrs++;
+        } else if (mmu_iscodeptr(x86_mmu(cpu), ptr)) {
+            char *ptrstr = disassembleptr(cpu, ptr);
+            char *temp = s;
+
+            s = strcatall(3, s, ptrstr, "\033[0m");
+
+            xfree(temp);
+            xfree(ptrstr);
             break;
         } else {
-            // just a ordinaty value
-
+            // just a plain value
             ptrstr = int2hexstr(ptr, 0);
-            size_t catsize = strlen(arrow_r) + strlen("\033[0m") + strlen(ptrstr);
-            s = xreallocarray(s, size + catsize + 1, sizeof(*s));
-            size += catsize;
+            char *temp = s;
 
-            coolstrcat(s, 3, arrow_r, "\033[0m", ptrstr);
+            s = strcatall(3, s, "\033[0m", ptrstr);
 
+            xfree(temp);
             xfree(ptrstr);
             break;
         }
 
     }
 
-    s[size] = 0;
-
     return s;
 }
 
-static char *add_call_target_to_instruction(moffset32_t target, struct symbol_lookup_record func, char *instruction)
+static char *add_branch_target_to_instruction(moffset32_t target, struct symbol_lookup_record func, char *instruction)
 {
     char *relative = NULL;
     char *s;
@@ -185,9 +182,9 @@ static char *add_call_target_to_instruction(moffset32_t target, struct symbol_lo
     return s;
 }
 
-static char *disassembleptr(void *cpu, moffset32_t effctvaddr)
+static char *disassembleptr(void *cpu, moffset32_t vaddr)
 {
-    struct symbol_lookup_record func = sr_lookup(x86_resolver(cpu), effctvaddr);
+    struct symbol_lookup_record func = sr_lookup(x86_resolver(cpu), vaddr);
     struct instruction ins;
     char *s = NULL;
     char *functrel = NULL;
@@ -201,24 +198,24 @@ static char *disassembleptr(void *cpu, moffset32_t effctvaddr)
     // it will create a string in this format:  0xdeadbeef <main+0x123> ◀- 0x5f pop EDI
     if (func.sl_start) {
 
-        addrstr = int2hexstr(effctvaddr, 8);
+        addrstr = int2hexstr(vaddr, 8);
 
         // do we add the offset?
-        if (effctvaddr - func.sl_start)
-            functrel = int2hexstr(effctvaddr - func.sl_start, 0);
+        if (vaddr - func.sl_start)
+            functrel = int2hexstr(vaddr - func.sl_start, 0);
 
         // get the instruction
-        ins = x86_decode(x86_mmu(cpu), effctvaddr);
+        ins = x86_decode(x86_mmu(cpu), vaddr);
         opcodestr = int2hexstr(ins.data.opc, 2);
 
         // disassemble the instruction
         disasstr = x86_disassemble(ins);
 
         // add the name of the called function
-        if (strcmp(ins.name, "CALL") == 0) {
-            moffset32_t calladdress = x86_findcalltarget(cpu, ins.data);
+        if (ins.handler == x86_mm_call || ins.handler == x86_mm_jcc) {
+            moffset32_t calladdress = x86_findbranchtarget(cpu, ins.data);
 
-            char *temp = add_call_target_to_instruction(calladdress, sr_lookup(x86_resolver(cpu), calladdress), disasstr);
+            char *temp = add_branch_target_to_instruction(calladdress, sr_lookup(x86_resolver(cpu), calladdress), disasstr);
             xfree(disasstr);
             disasstr = temp;
         }
@@ -240,15 +237,15 @@ static char *disassembleptr(void *cpu, moffset32_t effctvaddr)
 static void print_eflags(void *cpu)
 {
     s_info("%sEFLAGS:\033[0m [ %s %s %s %s %s %s %s %s %s ]\n", conf_x86_cpustat_register_color,
-            x86_queryflag(cpu, OF) ? "\033[1;32mOF\033[0m" : "\033[1;90mOF\033[0m",
-            x86_queryflag(cpu, DF) ? "\033[1;32mDF\033[0m" : "\033[1;90mDF\033[0m",
-            x86_queryflag(cpu, IF) ? "\033[1;32mIF\033[0m" : "\033[1;90mIF\033[0m",
-            x86_queryflag(cpu, TF) ? "\033[1;32mTF\033[0m" : "\033[1;90mTF\033[0m",
-            x86_queryflag(cpu, SF) ? "\033[1;32mSF\033[0m" : "\033[1;90mSF\033[0m",
-            x86_queryflag(cpu, ZF) ? "\033[1;32mZF\033[0m" : "\033[1;90mZF\033[0m",
-            x86_queryflag(cpu, AF) ? "\033[1;32mAF\033[0m" : "\033[1;90mAF\033[0m",
-            x86_queryflag(cpu, PF) ? "\033[1;32mPF\033[0m" : "\033[1;90mPF\033[0m",
-            x86_queryflag(cpu, CF) ? "\033[1;32mCF\033[0m" : "\033[1;90mCF\033[0m"
+            x86_flag_on(cpu, OF) ? "\033[1;32mOF\033[0m" : "\033[1;90mOF\033[0m",
+            x86_flag_on(cpu, DF) ? "\033[1;32mDF\033[0m" : "\033[1;90mDF\033[0m",
+            x86_flag_on(cpu, IF) ? "\033[1;32mIF\033[0m" : "\033[1;90mIF\033[0m",
+            x86_flag_on(cpu, TF) ? "\033[1;32mTF\033[0m" : "\033[1;90mTF\033[0m",
+            x86_flag_on(cpu, SF) ? "\033[1;32mSF\033[0m" : "\033[1;90mSF\033[0m",
+            x86_flag_on(cpu, ZF) ? "\033[1;32mZF\033[0m" : "\033[1;90mZF\033[0m",
+            x86_flag_on(cpu, AF) ? "\033[1;32mAF\033[0m" : "\033[1;90mAF\033[0m",
+            x86_flag_on(cpu, PF) ? "\033[1;32mPF\033[0m" : "\033[1;90mPF\033[0m",
+            x86_flag_on(cpu, CF) ? "\033[1;32mCF\033[0m" : "\033[1;90mCF\033[0m"
             );
 }
 

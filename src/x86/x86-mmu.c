@@ -181,9 +181,10 @@ static void *mmu_mmap(x86MMU *mmu, moffset32_t virtaddr, size_t memsz, int prot,
         return 0;
 
     if (fd != -1) {
-        if (filesz == 0 || filesz > memsz || (offset % conf_mmu_pagesize) != 0)
+        if (filesz == 0 || filesz > memsz)
         return 0;
     }
+
 
     // rounding up the size of the mapping to a multiple of page size
     // it will be easier for us to keep track of all pages this way
@@ -211,9 +212,8 @@ static void *mmu_mmap(x86MMU *mmu, moffset32_t virtaddr, size_t memsz, int prot,
             return 0;
         }
     }
-
     // set the actual protection requested
-    mprotect(buffer, memsz, prot);
+    //mprotect(buffer, memsz, prot);
 
     mmu->mm_segment_tbl = xreallocarray(mmu->mm_segment_tbl, ++mmu->mm_segments, sizeof(*mmu->mm_segment_tbl));
 
@@ -229,31 +229,26 @@ static void *mmu_mmap(x86MMU *mmu, moffset32_t virtaddr, size_t memsz, int prot,
 }
 
 
-void mmu_mmap_loadable(x86MMU *mmu, GenericELF *g_elf)
+void mmu_mmap_loadable(x86MMU *mmu, GenericELF *elf)
 {
-    struct loadable_segment segment;
+    pt_load_segment_t *segment;
     int prot = 0;
 
-    if (!mmu)
+    if (!mmu || !elf)
         return;
 
-    if (!g_elf) {
-        mmu_set_error(mmu, INVALREF, "invalid reference");
-        return;
-    }
+    for (size_t i = 0; i < elf_nloadable(elf); i++, prot = 0) {
+        segment = &elf_loadable(elf)[i];
 
-    for (size_t i = 0; i < elf_nloadable(g_elf); i++, prot = 0) {
-        segment = elf_loadable(g_elf)[i];
-
-        if (segment.s_perms & PF_R)
+        if (segment->pt_flags & PF_R)
             prot |= PROT_READ;
-        if (segment.s_perms & PF_W)
+        if (segment->pt_flags & PF_W)
             prot |= PROT_WRITE;
-        if (segment.s_perms & PF_X)
+        if (segment->pt_flags & PF_X)
             prot |= PROT_EXEC;
 
-        mmu_mmap(mmu, segment.s_vaddr, segment.s_memsz, prot, 0,
-                    elf_underlfd(g_elf), segment.s_offset, segment.s_filesz);
+        mmu_mmap(mmu, segment->pt_vaddr, segment->pt_memsz, prot, 0,
+                    elf_underlfd(elf), segment->pt_offset, segment->pt_filesz);
 
         if (mmu_error(mmu))
             return;
@@ -438,4 +433,9 @@ inline _Bool mmu_isdataptr(x86MMU *mmu, moffset32_t virtaddr)
 _Bool mmu_iscodeptr(x86MMU *mmu, moffset32_t virtaddr)
 {
     return mmu_query(mmu, virtaddr, SD_PROT) & PROT_EXEC;
+}
+
+inline _Bool mmu_isstackptr(x86MMU *mmu, moffset32_t virtaddr)
+{
+    return mmu_query(mmu, virtaddr, SD_BASE) == conf_mmu_top_stack_address;
 }

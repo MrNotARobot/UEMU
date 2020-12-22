@@ -27,7 +27,7 @@
 typedef struct {
     moffset32_t fr_start;
     off_t fr_strtaboff; // this is added to the offset of the string table when reading from the file
-    const char *fr_sym;
+    char *fr_sym;
     size_t fr_size;
 } sym_map_t;
 
@@ -64,7 +64,7 @@ typedef struct {
     int sr_fd;          // file descriptor that points to the file used to load the cache
                         // its not the same as the one hold by the GenericELF struct but a new one
     off_t sr_strtaboff; // offset of the string table from the file pointed to by sr_fd
-    char *sr_strtab;  // table for already resolved symbols
+    char **sr_strtab;  // table for already resolved symbols
     size_t sr_strtabsz;
 
 } sym_resolver_t;

@@ -33,20 +33,7 @@
 #include "../system.h"
 
 static char *modrm2str(uint8_t, uint8_t, uint32_t, int);
-static char *strcatimm(char *, const char *, uint32_t, const char *);
 static char *strcatimm2(char *, const char *, const char *, uint32_t);
-
-static char *strcatimm(char *dest, const char *beginning, uint32_t displacement, const char *end)
-{
-    char *arg = NULL;
-
-    arg = int2hexstr(displacement, 0);
-    coolstrcat(dest, 3, beginning, arg, end);
-    xfree(arg);
-
-
-    return dest;
-}
 
 static char *strcatimm2(char *dest, const char *beginning, const char *middle, uint32_t displacement)
 {
@@ -68,103 +55,112 @@ static char *modrm2str(uint8_t modrm, uint8_t sib, uint32_t imm, int oprnd_size)
     uint8_t ss_factor = sibss(sib);
     uint8_t index = sibindex(sib);
     uint8_t base = sibbase(sib);
-    char *s = xcalloc(17, sizeof(*s)); /// enough for [EAX*8+EBP+0xdeadbeef]
-    _Bool use_sib = 0;
+    char *regstr = NULL;
+    const char *scale = "";
+    _Bool is_ebp = 0;
+    char *s = NULL;
 
     if (mod == 0) {
-        switch (rm) {
-            case 0b000: return strcat(s, "[EAX]");
-            case 0b001: return strcat(s, "[ECX]");
-            case 0b010: return strcat(s, "[EDX]");
-            case 0b011: return strcat(s, "[EBX]");
-            case 0b100: use_sib = 1; break;
-            case 0b101: return strcatimm(s, "[", imm, "]");
-            case 0b110: return strcat(s, "[ESI]");
-            case 0b111: return strcat(s, "[EDI]");
+        if (rm != 0b100) {
+            if (rm == 0b101) {
+                char *immediate = int2hexstr(imm, 0);
+                s = strcatall(3, "[", immediate, "]");
+                xfree(immediate);
+                return s;
+            }
+
+            return strcatall(3, "[", stringfyregister(rm, 32), "]");
         }
     } else if (mod == 1 || mod == 2) {
-        switch (rm) {
-            case 0b000: return strcatimm(s, "[EAX+", imm, "]");
-            case 0b001: return strcatimm(s, "[ECX+", imm, "]");
-            case 0b010: return strcatimm(s, "[EDX+", imm, "]");
-            case 0b011: return strcatimm(s, "[EBX+", imm, "]");
-            case 0b100: use_sib = 1; break;
-            case 0b101: return strcatimm(s, "[EBP+", imm, "]");
-            case 0b110: return strcatimm(s, "[ESI+", imm, "]");
-            case 0b111: return strcatimm(s, "[EDI+", imm, "]");
+
+        if (rm != 0b100) {
+            char *immediate = int2hexstr(imm, 0);
+            s = strcatall(4, "[", stringfyregister(rm, 32), immediate);
+            xfree(immediate);
+            return s;
         }
     } else {
-        return strcat(s, stringfyregister(rm, oprnd_size));
+            if (oprnd_size == 8)
+                return xstrdup(stringfyregister(reg32to8(rm), oprnd_size));
+        return xstrdup(stringfyregister(rm, oprnd_size));
     }
 
-    if (use_sib) {
-        char *regstr = NULL;
-        _Bool is_ebp = 0;
-        switch (base) {
-            case 0b101:
-                regstr = xcalloc(15, sizeof(*s)); // enough for EBP+0xdeadbeef
-                if (mod == 0)
-                    regstr = int2hexstr(imm, 0);
-                else
-                    strcatimm(regstr, "EBP+", imm, "");
-                is_ebp = 1;
-                break;
-            case 0b000:
-            case 0b001:
-            case 0b010:
-            case 0b011:
-            case 0b100:
-            case 0b110:
-            case 0b111:
-                regstr = (char *)stringfyregister(base, 32);
-        }
+    switch (base) {
+        case 0b101:
+            regstr = xcalloc(15, sizeof(*s)); // enough for EBP+0xdeadbeef
+            if (mod == 0)
+                regstr = int2hexstr(imm, 8);
+            else
+                regstr = xstrdup("EBP");
+            is_ebp = 1;
+            break;
+        case 0b000:
+        case 0b001:
+        case 0b010:
+        case 0b011:
+        case 0b100:
+        case 0b110:
+        case 0b111:
+            regstr = (char *)stringfyregister(base, 32);
+    }
 
-        if (ss_factor == 0b00) {
-            switch (index) {
-                case 0b000: coolstrcat(s, 3, "[EAX+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b001: coolstrcat(s, 3, "[ECX+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b010: coolstrcat(s, 3, "[EDX+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b011: coolstrcat(s, 3, "[EBX+", regstr, "]"); (is_ebp) ? xfree(regstr): 0; break;
-                case 0b100: coolstrcat(s, 3, "[", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b101: coolstrcat(s, 3, "[EBP+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b110: coolstrcat(s, 3, "[ESI+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b111: coolstrcat(s, 3, "[EDI+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-            }
-        } else if (ss_factor == 0b01) {
-            switch (index) {
-                case 0b000: coolstrcat(s, 3, "[EAX*2+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b001: coolstrcat(s, 3, "[ECX*2+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b010: coolstrcat(s, 3, "[EDX*2+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b011: coolstrcat(s, 3, "[EBX*2+", regstr, "]"); (is_ebp) ? xfree(regstr): 0; break;
-                case 0b100: coolstrcat(s, 3, "[", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b101: coolstrcat(s, 3, "[EBP*2+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b110: coolstrcat(s, 3, "[ESI*2+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b111: coolstrcat(s, 3, "[EDI*2+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-            }
-        } else if (ss_factor == 0b10) {
-            switch (index) {
-                case 0b000: coolstrcat(s, 3, "[EAX*4+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b001: coolstrcat(s, 3, "[ECX*4+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b010: coolstrcat(s, 3, "[EDX*4+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b011: coolstrcat(s, 3, "[EBX*4+", regstr, "]"); (is_ebp) ? xfree(regstr): 0; break;
-                case 0b100: coolstrcat(s, 3, "[", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b101: coolstrcat(s, 3, "[EBP*4+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b110: coolstrcat(s, 3, "[ESI*4+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b111: coolstrcat(s, 3, "[EDI*4+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-            }
-        } else if (ss_factor == 0b10) {
-            switch (index) {
-                case 0b000: coolstrcat(s, 3, "[EAX*8+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b001: coolstrcat(s, 3, "[ECX*8+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b010: coolstrcat(s, 3, "[EDX*8+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b011: coolstrcat(s, 3, "[EBX*8+", regstr, "]"); (is_ebp) ? xfree(regstr): 0; break;
-                case 0b100: coolstrcat(s, 3, "[", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b101: coolstrcat(s, 3, "[EBP*8+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b110: coolstrcat(s, 3, "[ESI*8+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-                case 0b111: coolstrcat(s, 3, "[EDI*8+", regstr, "]"); (is_ebp) ? xfree(regstr) : 0; break;
-            }
+    if (ss_factor == 0b00) {
+        switch (index) {
+            case 0b000: scale = "EAX+"; break;
+            case 0b001: scale = "ECX+"; break;
+            case 0b010: scale = "EDX+"; break;
+            case 0b011: scale = "EBX+"; break;
+            case 0b100: scale = ""; break;
+            case 0b101: scale = "EBP+"; break;
+            case 0b110: scale = "ESI+"; break;
+            case 0b111: scale = "EDI+"; break;
+        }
+    } else if (ss_factor == 0b01) {
+        switch (index) {
+            case 0b000: scale = "EAX*2+"; break;
+            case 0b001: scale = "ECX*2+"; break;
+            case 0b010: scale = "EDX*2+"; break;
+            case 0b011: scale = "EBX*2+"; break;
+            case 0b100: scale = ""; break;
+            case 0b101: scale = "EBP*2+"; break;
+            case 0b110: scale = "ESI*2+"; break;
+            case 0b111: scale = "EDI*2+"; break;
+        }
+    } else if (ss_factor == 0b10) {
+        switch (index) {
+            case 0b000: scale = "EAX*4+"; break;
+            case 0b001: scale = "ECX*4+"; break;
+            case 0b010: scale = "EDX*4+"; break;
+            case 0b011: scale = "EBX*4+"; break;
+            case 0b100: scale = ""; break;
+            case 0b101: scale = "EBP*4+"; break;
+            case 0b110: scale = "ESI*4+"; break;
+            case 0b111: scale = "EDI*4+"; break;
+        }
+    } else if (ss_factor == 0b10) {
+        switch (index) {
+            case 0b000: scale = "EAX*8+"; break;
+            case 0b001: scale = "ECX*8+"; break;
+            case 0b010: scale = "EDX*8+"; break;
+            case 0b011: scale = "EBX*8+"; break;
+            case 0b100: scale = ""; break;
+            case 0b101: scale = "EBP*8+"; break;
+            case 0b110: scale = "ESI*8+"; break;
+            case 0b111: scale = "EDI*8+"; break;
         }
     }
+
+    if (mod == 1 || mod == 2) {
+        char *displacement = int2hexstr(imm, 0);
+
+        s = strcatall(6, "[", scale, regstr, "+", displacement, "]");
+        xfree(displacement);
+    } else {
+        s = strcatall(4, "[", scale, regstr, "]");
+    }
+
+    if (is_ebp)
+        xfree(regstr);
 
     return s;
 }
@@ -189,17 +185,17 @@ char *x86_disassemble(struct instruction instr)
     switch (instr.encoding) {
         case rm32_imm32:
         case rm32_imm8:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 32);
             strcatimm2(s, arg, ", ", instr.data.imm1);
             xfree(arg);
             break;
         case rm8_imm8:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 8);
             strcatimm2(s, arg, ", ", instr.data.imm1);
             xfree(arg);
             break;
         case rm16_imm8:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
             strcatimm2(s, arg, ", ", instr.data.imm1);
             xfree(arg);
             break;
@@ -257,7 +253,7 @@ char *x86_disassemble(struct instruction instr)
             xfree(arg);
             break;
         case rm16_imm16:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
             strcatimm2(s, arg, ", ", instr.data.imm1);
             xfree(arg);
             break;
@@ -268,117 +264,117 @@ char *x86_disassemble(struct instruction instr)
             break;
         case rm8:
         case m8:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 8);
             strcat(s, arg);
             xfree(arg);
             break;
         case rm16:
         case m16:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
             strcat(s, arg);
             xfree(arg);
             break;
         case rm32:
         case m32:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 32);
             strcat(s, arg);
             xfree(arg);
             break;
         case rm8_1:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 8);
             coolstrcat(s, 3, arg, ", ", "1");
             xfree(arg);
             break;
         case rm8_CL:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 8);
             coolstrcat(s, 3, arg, ", ", "CL");
             xfree(arg);
             break;
         case rm8_r8:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 8);
             coolstrcat(s, 3, arg, ", ", stringfyregister(reg32to8(instr.data.modrm), 8));
             xfree(arg);
             break;
         case rm16_1:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
             coolstrcat(s, 3, arg, ", ", "1");
             xfree(arg);
             break;
         case rm16_CL:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
             coolstrcat(s, 3, arg, ", ", "CL");
             xfree(arg);
             break;
         case rm16_r16:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
             coolstrcat(s, 3, arg, ", ", stringfyregister(reg(instr.data.modrm), 16));
             xfree(arg);
             break;
         case rm16_r16_CL:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
             coolstrcat(s, 5, arg, ", ", stringfyregister(reg(instr.data.modrm), 16), ", ", "CL");
             xfree(arg);
             break;
         case rm32_1:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 32);
             coolstrcat(s, 3, arg, ", ", "1");
             xfree(arg);
             break;
         case rm32_CL:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 32);
             coolstrcat(s, 3, arg, ", ", "CL");
             xfree(arg);
             break;
         case m32_r32:
         case rm32_r32:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 32);
             coolstrcat(s, 3, arg, ", ", stringfyregister(reg(instr.data.modrm), 32));
             xfree(arg);
             break;
         case rm32_r32_CL:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 32);
             coolstrcat(s, 5, arg, ", ", stringfyregister(reg(instr.data.modrm), 32), ", ", "CL");
             xfree(arg);
             break;
         case r8_rm8:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 8);
             coolstrcat(s, 3, stringfyregister(reg(instr.data.modrm), 8), ", ", arg);
             xfree(arg);
             break;
         case r16_rm8:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 8);
             coolstrcat(s, 3, stringfyregister(reg(instr.data.modrm), 16), ", ", arg);
             xfree(arg);
             break;
         case r16_m16:
         case r16_rm16:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
             coolstrcat(s, 3, stringfyregister(reg(instr.data.modrm), 16), ", ", arg);
             xfree(arg);
             break;
         case r32_m32:
         case r32_rm32:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 32);
             coolstrcat(s, 3, stringfyregister(reg(instr.data.modrm), 32), ", ", arg);
             xfree(arg);
             break;
         case r32_rm8:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 8);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 8);
             coolstrcat(s, 3, stringfyregister(reg(instr.data.modrm), 32), ", ", arg);
             xfree(arg);
             break;
         case r32_rm16:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
             coolstrcat(s, 3, stringfyregister(reg(instr.data.modrm), 32), ", ", arg);
             xfree(arg);
             break;
         case AX_r16:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 16);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
             coolstrcat(s, 3, "AX", ", ", arg);
             xfree(arg);
             break;
         case eAX_r32:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.imm1, 32);
+            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 32);
             coolstrcat(s, 3, "EAX", ", ", arg);
             xfree(arg);
             break;
@@ -973,17 +969,57 @@ moffset32_t x86_decodeuntil(x86MMU *mmu, moffset32_t eip, moffset32_t stop_eip)
     return addr;
 }
 
-moffset32_t x86_findcalltarget(void *cpu, struct exec_data data)
+moffset32_t x86_findbranchtarget(void *cpu, struct exec_data data)
 {
     ASSERT(cpu != NULL);
     moffset32_t effctvaddr;
 
     if (data.oprsz_pfx)
-        effctvaddr = x86_effctvaddr16(cpu, data.modrm, low16(data.moffset));
+        effctvaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
     else
-        effctvaddr = x86_effctvaddr32(cpu, data.modrm, data.sib, data.moffset);
+        effctvaddr = x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset);
 
     switch (data.opc) {
+        case 0x77:  // JA rel8
+        case 0x73:  // JAE rel8
+        case 0x72:  // JB rel8
+        case 0x76:  // JBE rel8
+        case 0xE3:  // JCXZ rel8
+        case 0x74:  // JE rel8
+        case 0x7F:  // JG rel7
+        case 0x7D:  // JGE rel8
+        case 0x7C:  // JL rel8
+        case 0x7E:  // JLE rel8
+        case 0x75:  // JNE rel8
+        case 0x71:  // JNO rel8
+        case 0x7B:  // JNP rel8
+        case 0x79:  // JNS rel8
+        case 0x70:  // JO rel8
+        case 0x7A:  // JPE rel8
+        case 0x78:  // JS rel8
+            return x86_rdreg32(cpu, EIP) + lsb(data.imm1);
+            break;
+        case 0x80:  // JO rel32     rel16
+        case 0x81:  // JNO rel32     rel16
+        case 0x82:  // JB rel32     rel16
+        case 0x83:  // JAE rel32    rel16
+        case 0x84:  // JE rel32     rel16
+        case 0x85:  // JNE rel32     rel16
+        case 0x86:  // JBE rel32    rel16
+        case 0x87:  // JA rel32     rel16
+        case 0x88:  // JS rel32     rel16
+        case 0x89:  // JNS rel32     rel16
+        case 0x8A:  // JP rel32     rel16
+        case 0x8B:  // JNP rel32     rel16
+        case 0x8D:  // JGE rel32    rel16
+        case 0x8C:  // JL rel32     rel16
+        case 0x8E:  // JLE rel32     rel16
+        case 0x8F:  // JG rel32     rel16
+            if (data.oprsz_pfx)
+                return x86_rdreg16(cpu, EIP) + low16(data.imm1);
+            else
+                return x86_rdreg32(cpu, EIP) + data.imm1;
+            break;
         case 0xE8:  // CALL rel32   CALL rel16
             return x86_rdreg32(cpu, EIP) + data.imm1;
         case 0xFF:
@@ -995,9 +1031,9 @@ moffset32_t x86_findcalltarget(void *cpu, struct exec_data data)
                         return x86_rdmem32(cpu, effctvaddr);
                 } else {
                     if (data.oprsz_pfx)
-                        return x86_rdreg16(cpu, effctvregister(data.modrm));
+                        return x86_rdreg16(cpu, effctvregister(data.modrm, 16));
                     else
-                        return x86_rdreg32(cpu, effctvregister(data.modrm));
+                        return x86_rdreg32(cpu, effctvregister(data.modrm, 32));
                 }
             } else {    // FF /3 CALL m16:32  CALL m16:16
                 if (data.oprsz_pfx)

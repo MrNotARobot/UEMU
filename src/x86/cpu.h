@@ -97,45 +97,45 @@ typedef struct {
 #define x86_resolver(cpu) (&((x86CPU *)(cpu))->resolver)
 
 enum x86ExceptionsInterrupts {
-        INT_UD,     // invalid instruction
-        INT_PF,     // Page Fault
-    };
+    INT_UD,     // invalid instruction
+    INT_PF,     // Page Fault
+};
 
-    void x86_startcpu(x86CPU *);
-    void x86_stopcpu(x86CPU *);
+void x86_startcpu(x86CPU *);
+void x86_stopcpu(x86CPU *);
 
-    // the main loop
-    void x86_cpu_exec(char *, int argc, char **, char **);
+// the main loop
+void x86_cpu_exec(char *, int argc, char **, char **);
 
-    void x86_raise_exception(x86CPU *, int);
-    void x86_raise_exception_d(x86CPU *, int, moffset32_t, const char *);
+void x86_raise_exception(x86CPU *, int);
+void x86_raise_exception_d(x86CPU *, int, moffset32_t, const char *);
 
-    // don't use the MMU interface direcly for reading/writing (USE THESE)
-    uint8_t x86_rdmem8(x86CPU *, moffset32_t);
-    uint16_t x86_rdmem16(x86CPU *, moffset32_t);
-    uint32_t x86_rdmem32(x86CPU *, moffset32_t);
+// don't use the MMU interface direcly for reading/writing (USE THESE)
+uint8_t x86_rdmem8(x86CPU *, moffset32_t);
+uint16_t x86_rdmem16(x86CPU *, moffset32_t);
+uint32_t x86_rdmem32(x86CPU *, moffset32_t);
 
-    void x86_wrmem8(x86CPU *, moffset32_t, uint8_t);
-    void x86_wrmem16(x86CPU *, moffset32_t, uint16_t);
-    void x86_wrmem32(x86CPU *, moffset32_t, uint32_t);
+void x86_wrmem8(x86CPU *, moffset32_t, uint8_t);
+void x86_wrmem16(x86CPU *, moffset32_t, uint16_t);
+void x86_wrmem32(x86CPU *, moffset32_t, uint32_t);
 
-    uint8_t x86_atomic_rdmem8(x86CPU *, moffset32_t);
-    uint16_t x86_atomic_rdmem16(x86CPU *, moffset32_t);
-    uint32_t x86_atomic_rdmem32(x86CPU *, moffset32_t);
+uint8_t x86_atomic_rdmem8(x86CPU *, moffset32_t);
+uint16_t x86_atomic_rdmem16(x86CPU *, moffset32_t);
+uint32_t x86_atomic_rdmem32(x86CPU *, moffset32_t);
 
-    void x86_atomic_wrmem8(x86CPU *, moffset32_t, uint8_t);
-    void x86_atomic_wrmem16(x86CPU *, moffset32_t, uint16_t);
-    void x86_atomic_wrmem32(x86CPU *, moffset32_t, uint32_t);
+void x86_atomic_wrmem8(x86CPU *, moffset32_t, uint8_t);
+void x86_atomic_wrmem16(x86CPU *, moffset32_t, uint16_t);
+void x86_atomic_wrmem32(x86CPU *, moffset32_t, uint32_t);
 
-    // write a sequence of bytes
-    void x86_wrseq(x86CPU *, moffset32_t, const uint8_t *, size_t);
-    // read a sequence of bytes into the buffer
-    void x86_rdseq(x86CPU *, moffset32_t, uint8_t *, size_t);
-    // same as above but will stop if it reaches the stop byte
-    void x86_rdseq2(x86CPU *, moffset32_t, uint8_t *, size_t, uint8_t);
+// write a sequence of bytes
+void x86_wrseq(x86CPU *, moffset32_t, const uint8_t *, size_t);
+// read a sequence of bytes into the buffer
+void x86_rdseq(x86CPU *, moffset32_t, uint8_t *, size_t);
+// same as above but will stop if it reaches the stop byte
+void x86_rdseq2(x86CPU *, moffset32_t, uint8_t *, size_t, uint8_t);
 
-    // I like this function-like way of accessing the registers
-    // read the 8 low/high bits
+// I like this function-like way of accessing the registers
+// read the 8 low/high bits
 #define x86_rdreg8(cpu, reg) reg8_islsb(reg) ? \
         (  *(((x86CPU *)(cpu))->reg_table_[reg8to32(reg)]) & 0x000000ff  ) : \
         (  *(((x86CPU *)(cpu))->reg_table_[reg8to32(reg)]) & 0x0000ff00  )
@@ -167,6 +167,7 @@ enum x86ExceptionsInterrupts {
 #define x86_setflag(cpu, flag) (  ((x86CPU *)(cpu))->eflags_ptr_->f_ ## flag = 1  )
 #define x86_clearflag(cpu, flag) (  ((x86CPU *)(cpu))->eflags_ptr_->f_ ## flag = 0  )
 
-#define x86_queryflag(cpu, flag) (   ((x86CPU *)(cpu))->eflags.f_ ## flag    )
+#define x86_flag_on(cpu, flag) (   ((x86CPU *)(cpu))->eflags.f_ ## flag == 1 )
+#define x86_flag_off(cpu, flag) (   ((x86CPU *)(cpu))->eflags.f_ ## flag == 0 )
 
 #endif /* CPU_H */

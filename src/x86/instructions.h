@@ -25,22 +25,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define MODRM_RM_BITMASK 0b00000111
-#define MODRM_REG_BITMASK 0b00111000
-#define MODRM_MOD_BITMASK 0b11000000
-
-#define rm(modrm)  (    ((modrm) & MODRM_RM_BITMASK)           )
-#define reg(modrm) (    ((modrm) & MODRM_REG_BITMASK) >> 3     )
-#define mod(modrm) (    ((modrm) & MODRM_MOD_BITMASK) >> 6     )
-
-#define SIB_BASE_BITMASK 0b00000111
-#define SIB_INDEX_BITMASK 0b00111000
-#define SIB_SS_BITMASK 0b11000000
-
-#define sibbase(sib) (  (sib) & SIB_BASE_BITMASK  )
-#define sibindex(sib) (  ((sib) & SIB_INDEX_BITMASK) >> 3  )
-#define sibss(sib) (  ((sib) & SIB_SS_BITMASK) >> 6  )
-
 #define TABLE_0F_PREFIX_MASK 5
 
 struct exec_data {
@@ -496,7 +480,7 @@ void x86_int1(void *, struct exec_data);
 void x86_invd(void *, struct exec_data);
 void x86_invlpg(void *, struct exec_data);
 void x86_iret(void *, struct exec_data);
-void x86_jcc(void *, struct exec_data);
+void x86_mm_jcc(void *, struct exec_data);
 void x86_jmp(void *, struct exec_data);
 void x86_lahf(void *, struct exec_data);
 void x86_lar(void *, struct exec_data);
@@ -507,7 +491,7 @@ void x86_lss(void *, struct exec_data);
 void x86_les(void *, struct exec_data);
 void x86_lfs(void *, struct exec_data);
 void x86_lgs(void *, struct exec_data);
-void x86_lea(void *, struct exec_data);
+void x86_mm_lea(void *, struct exec_data);
 void x86_leave(void *, struct exec_data);
 void x86_lfence(void *, struct exec_data);
 void x86_lgdt(void *, struct exec_data);
@@ -721,7 +705,7 @@ void x86_shl(void *, struct exec_data);
 void x86_shr(void *, struct exec_data);
 void x86_sbb(void *, struct exec_data);
 void x86_scas(void *, struct exec_data);
-void x86_setcc(void *, struct exec_data);
+void x86_mm_setcc(void *, struct exec_data);
 void x86_sfence(void *, struct exec_data);
 void x86_sgdt(void *, struct exec_data);
 void x86_sha1rnds4(void *, struct exec_data);
@@ -747,7 +731,7 @@ void x86_std(void *, struct exec_data);
 void x86_sti(void *, struct exec_data);
 void x86_stos(void *, struct exec_data);
 void x86_str(void *, struct exec_data);
-void x86_sub(void *, struct exec_data);
+void x86_mm_sub(void *, struct exec_data);
 void x86_subpd(void *, struct exec_data);
 void x86_subps(void *, struct exec_data);
 void x86_subsd(void *, struct exec_data);
@@ -757,7 +741,7 @@ void x86_syscall(void *, struct exec_data);
 void x86_sysenter(void *, struct exec_data);
 void x86_sysexit(void *, struct exec_data);
 void x86_sysret(void *, struct exec_data);
-void x86_test(void *, struct exec_data);
+void x86_mm_test(void *, struct exec_data);
 void x86_tzcnt(void *, struct exec_data);
 void x86_ucomisd(void *, struct exec_data);
 void x86_ucomiss(void *, struct exec_data);
