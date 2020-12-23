@@ -19,28 +19,30 @@
  * SOFTWARE.
  */
 
-#ifndef TYPES_H
-#define TYPES_H
 
-#include <stdint.h>
-#include <stddef.h>
-#include <sys/types.h>
+#ifndef X86_TYPES_H
+#define X86_TYPES_H
 
-typedef uint16_t reg16_t;
-typedef uint32_t reg32_t;
-
-typedef uint16_t moffset16_t;
-typedef uint32_t moffset32_t;
-
-#define moffset16(addr) ((addr) & 0x0000FFFF)
-
-
-// I think this is big enough. Remember that this is a description, not a full log.
-#define ERROR_DESCRIPTION_MAX_SIZE 80
-struct error_description {
-    int errnum;
-    char description[ERROR_DESCRIPTION_MAX_SIZE];
+struct EFlags {
+    unsigned int f_ID : 1;
+    unsigned int f_VIP : 1;
+    unsigned int f_VIF : 1;
+    unsigned int f_AC : 1;
+    unsigned int f_VM : 1;
+    unsigned int f_RF : 1;
+    unsigned int f_NT : 1;
+    unsigned int f_IOPL : 2;
+    unsigned int f_OF : 1;
+    unsigned int f_DF : 1;
+    unsigned int f_IF : 1;
+    unsigned int f_TF : 1;
+    unsigned int f_SF : 1;
+    unsigned int f_ZF : 1;
+    unsigned int f_AF : 1;
+    unsigned int f_PF : 1;
+    unsigned int f_CF : 1;
 };
 
 
-#endif /* TYPES_H */
+
+#endif /* X86_TYPES_H */

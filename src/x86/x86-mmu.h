@@ -31,12 +31,23 @@
 #include "../types.h"
 #include "../generic-elf.h"
 
+enum SegmentTypes {
+    ST_NONE,
+    ST_RODATA,
+    ST_RWDATA,
+    ST_XOCODE,
+    ST_RXCODE,
+    ST_RWXCODE,
+    ST_RWSTACK,
+    ST_RWXSTACK
+};
+
 typedef struct {
     void *buffer_;
     moffset32_t s_start;
     moffset32_t s_limit;
 
-    int s_prot;
+    int s_type;
 } segment_t;
 
 typedef struct {
@@ -86,9 +97,6 @@ void mmu_write64(x86MMU *, uint64_t, moffset32_t);
 
 // returns a read-only ptr
 const uint8_t *mmu_getptr(x86MMU *, moffset32_t);
-
-_Bool mmu_isdataptr(x86MMU *, moffset32_t);
-_Bool mmu_iscodeptr(x86MMU *, moffset32_t);
-_Bool mmu_isstackptr(x86MMU *, moffset32_t);
+int mmu_ptrtype(x86MMU *, moffset32_t);
 
 #endif /* X86_MMU_H */

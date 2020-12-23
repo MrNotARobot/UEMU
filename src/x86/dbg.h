@@ -19,28 +19,13 @@
  * SOFTWARE.
  */
 
-#ifndef TYPES_H
-#define TYPES_H
+#ifndef DBG_H
+#define DBG_H
 
-#include <stdint.h>
-#include <stddef.h>
-#include <sys/types.h>
-
-typedef uint16_t reg16_t;
-typedef uint32_t reg32_t;
-
-typedef uint16_t moffset16_t;
-typedef uint32_t moffset32_t;
-
-#define moffset16(addr) ((addr) & 0x0000FFFF)
+#include "cpu.h"
 
 
-// I think this is big enough. Remember that this is a description, not a full log.
-#define ERROR_DESCRIPTION_MAX_SIZE 80
-struct error_description {
-    int errnum;
-    char description[ERROR_DESCRIPTION_MAX_SIZE];
-};
+void x86dbg_print_state(x86CPU *);
 
 
-#endif /* TYPES_H */
+#endif /* DBG_H */

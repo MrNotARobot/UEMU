@@ -27,29 +27,30 @@
 
 #include <stdint.h>
 
-#include "x86-mmu.h"
 #include "../generic-elf.h"
 #include "../sym-resolver.h"
+#include "../tracer.h"
 
+#include "x86-types.h"
+#include "x86-mmu.h"
 #include "x86-utils.h"
 #include "instructions.h"
-#include "cpustat.h"
 
 typedef struct {
     x86MMU mmu;
     GenericELF executable;
     sym_resolver_t resolver;
+    cpu_state_t tracer;
 
 
     reg32_t EAX;
+    reg32_t EBX;
     reg32_t ECX;
     reg32_t EDX;
-    reg32_t EBX;
-    reg32_t ESI;
-    reg32_t EDI;
-    reg32_t ESP;
     reg32_t EBP;
-
+    reg32_t ESP;
+    reg32_t EDI;
+    reg32_t ESI;
     reg32_t EIP;
 
     reg16_t CS;
@@ -59,39 +60,14 @@ typedef struct {
     reg16_t FS;
     reg16_t GS;
 
-    struct EFlags {
-        reg32_t reserved : 10;
-        reg32_t f_ID : 1;
-        reg32_t f_VIP : 1;
-        reg32_t f_VIF : 1;
-        reg32_t f_AC : 1;
-        reg32_t f_VM : 1;
-        reg32_t f_RF : 1;
-        reg32_t reserved15 : 1;
-        reg32_t f_NT : 1;
-        reg32_t f_IOPL : 2;
-        reg32_t f_OF : 1;
-        reg32_t f_DF : 1;
-        reg32_t f_IF : 1;
-        reg32_t f_TF : 1;
-        reg32_t f_SF : 1;
-        reg32_t f_ZF : 1;
-        reg32_t reserved5 : 1;
-        reg32_t f_AF : 1;
-        reg32_t reserved3 : 1;
-        reg32_t f_PF : 1;
-        reg32_t reserved1 : 1;
-        reg32_t f_CF : 1;
-    } eflags;
+    struct EFlags eflags;
 
-    cpu_stat_t cpustat;
-
-    reg32_t *reg_table_[9];
     struct EFlags *eflags_ptr_;
     reg16_t *sreg_table_[6];
 } x86CPU;
+
     // member access macros
-#define x86_cpustat(cpu) (&((x86CPU *)(cpu))->cpustat)
+#define x86_tracer(cpu) (&((x86CPU *)(cpu))->tracer)
 #define x86_mmu(cpu) (&((x86CPU *)(cpu))->mmu)
 #define x86_elf(cpu) (&((x86CPU *)(cpu))->executable)
 #define x86_resolver(cpu) (&((x86CPU *)(cpu))->resolver)
@@ -111,21 +87,26 @@ void x86_raise_exception(x86CPU *, int);
 void x86_raise_exception_d(x86CPU *, int, moffset32_t, const char *);
 
 // don't use the MMU interface direcly for reading/writing (USE THESE)
-uint8_t x86_rdmem8(x86CPU *, moffset32_t);
-uint16_t x86_rdmem16(x86CPU *, moffset32_t);
-uint32_t x86_rdmem32(x86CPU *, moffset32_t);
+uint8_t x86_readM8(x86CPU *, moffset32_t);
+uint16_t x86_readM16(x86CPU *, moffset32_t);
+uint32_t x86_readM32(x86CPU *, moffset32_t);
 
-void x86_wrmem8(x86CPU *, moffset32_t, uint8_t);
-void x86_wrmem16(x86CPU *, moffset32_t, uint16_t);
-void x86_wrmem32(x86CPU *, moffset32_t, uint32_t);
+// Sames as read but doesn't raise a exception if fails
+uint8_t x86_try_readM8(x86CPU *, moffset32_t);
+uint16_t x86_try_readM16(x86CPU *, moffset32_t);
+uint32_t x86_try_readM32(x86CPU *, moffset32_t);
 
-uint8_t x86_atomic_rdmem8(x86CPU *, moffset32_t);
-uint16_t x86_atomic_rdmem16(x86CPU *, moffset32_t);
-uint32_t x86_atomic_rdmem32(x86CPU *, moffset32_t);
+void x86_writeM8(x86CPU *, moffset32_t, uint8_t);
+void x86_writeM16(x86CPU *, moffset32_t, uint16_t);
+void x86_writeM32(x86CPU *, moffset32_t, uint32_t);
 
-void x86_atomic_wrmem8(x86CPU *, moffset32_t, uint8_t);
-void x86_atomic_wrmem16(x86CPU *, moffset32_t, uint16_t);
-void x86_atomic_wrmem32(x86CPU *, moffset32_t, uint32_t);
+uint8_t x86_atomic_readM8(x86CPU *, moffset32_t);
+uint16_t x86_atomic_readM16(x86CPU *, moffset32_t);
+uint32_t x86_atomic_readM32(x86CPU *, moffset32_t);
+
+void x86_atomic_writeM8(x86CPU *, moffset32_t, uint8_t);
+void x86_atomic_writeM16(x86CPU *, moffset32_t, uint16_t);
+void x86_atomic_writeM32(x86CPU *, moffset32_t, uint32_t);
 
 // write a sequence of bytes
 void x86_wrseq(x86CPU *, moffset32_t, const uint8_t *, size_t);
@@ -134,33 +115,32 @@ void x86_rdseq(x86CPU *, moffset32_t, uint8_t *, size_t);
 // same as above but will stop if it reaches the stop byte
 void x86_rdseq2(x86CPU *, moffset32_t, uint8_t *, size_t, uint8_t);
 
-// I like this function-like way of accessing the registers
-// read the 8 low/high bits
-#define x86_rdreg8(cpu, reg) reg8_islsb(reg) ? \
-        (  *(((x86CPU *)(cpu))->reg_table_[reg8to32(reg)]) & 0x000000ff  ) : \
-        (  *(((x86CPU *)(cpu))->reg_table_[reg8to32(reg)]) & 0x0000ff00  )
-    // read the 16-bit register from a 32-bit register (i.e. eAX[ah])
-#define x86_rdreg16(cpu, reg) (  *(((x86CPU *)(cpu))->reg_table_[reg]) & 0x0000ffff  )
-    // read the register
-#define x86_rdreg32(cpu, reg) (  *(((x86CPU *)(cpu))->reg_table_[reg])  )
+enum PointerTypes {
+    NOT_A_PTR,
+    DATA_PTR,
+    STACK_PTR,
+    CODE_PTR
+};
+
+const uint8_t *x86_getptr(x86CPU *, moffset32_t);
+int x86_ptrtype(x86CPU *, moffset32_t);
+
+
+void x86_increment_eip(x86CPU *, moffset16_t);
+void x86_update_eip_absolute(x86CPU *, moffset32_t);
+
+// write to registers
+void x86_writeR8(x86CPU *, uint8_t, uint8_t);
+void x86_writeR16(x86CPU *, uint8_t, uint16_t);
+void x86_writeR32(x86CPU *, uint8_t, uint32_t);
+
+// read from registers
+uint8_t x86_readR8(x86CPU *, uint8_t);
+uint16_t x86_readR16(x86CPU *, uint8_t);
+uint32_t x86_readR32(x86CPU *, uint8_t);
+
 
 #define x86_rdsreg(cpu, reg) *(    ((x86CPU *)(cpu))->sreg_table_[reg]    )
-
-    // write to the 8 low bits of a register
-#define x86_wrreg8(cpu, reg, val) \
-    do { \
-        if (reg8_islsb (reg)) \
-            (  *(((x86CPU *)(cpu))->reg_table_[reg8to32(reg)]) =\
-            (  *((x86CPU *)(cpu))->reg_table_[reg8to32(reg)] & 0xffffff00  ) | ((val) & 0x000000ff)  );\
-       else \
-            (  *(((x86CPU *)(cpu))->reg_table_[reg8to32(reg)]) = \
-            (  *((x86CPU *)(cpu))->reg_table_[reg8to32(reg)] & 0xffff00ff  ) | ((val) & 0x0000ff00)  ); \
-    } while (0)
-
-    // write to the 16-bit register from a 32-bit register
-#define x86_wrreg16(cpu, reg, val) (  *(((x86CPU *)(cpu))->reg_table_[reg]) =  \
-            (  *((x86CPU *)(cpu))->reg_table_[reg] & 0xffff0000  ) | ((val) & 0x0000ffff)  )
-#define x86_wrreg32(cpu, reg, val)(   *(((x86CPU *)(cpu))->reg_table_[reg]) = (val)    )
 
 #define x86_wrsreg(cpu, reg, val) (    *(((x86CPU *)(cpu))->sreg_table_[reg]) = (val)    )
 

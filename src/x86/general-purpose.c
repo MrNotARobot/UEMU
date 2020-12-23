@@ -23,6 +23,7 @@
 
 #include "cpu.h"
 #include "x86-utils.h"
+#include "../tracer.h"
 
 // XOR
 
@@ -40,20 +41,20 @@ static uint32_t x86__mm_rX_immX_xor(void *cpu, uint8_t reg, uint32_t imm, int si
     x86_clearflag(cpu, PF);
 
     if (size == 8) {
-        result = x86_rdreg8(cpu, reg) ^ lsb(imm);
-        x86_wrreg8(cpu, reg, lsb(result));
+        result = x86_readR8(cpu, reg) ^ lsb(imm);
+        x86_writeR8(cpu, reg, lsb(result));
         if (signbit8(result))
             x86_setflag(cpu, SF);
 
     } else if (size == 16) {
-        result = x86_rdreg16(cpu, reg) ^ low16(imm);
-        x86_wrreg16(cpu, reg, low16(result));
+        result = x86_readR16(cpu, reg) ^ low16(imm);
+        x86_writeR16(cpu, reg, low16(result));
 
         if (signbit16(result))
             x86_setflag(cpu, SF);
     } else {
-        result = x86_rdreg32(cpu, reg) ^ imm;
-        x86_wrreg32(cpu, reg, result);
+        result = x86_readR32(cpu, reg) ^ imm;
+        x86_writeR32(cpu, reg, result);
         if (signbit32(result))
             x86_setflag(cpu, SF);
     }
@@ -78,21 +79,21 @@ static uint32_t x86__mm_mX_immX_xor(void *cpu, moffset32_t vaddr, uint32_t imm, 
     x86_clearflag(cpu, PF);
 
     if (size == 8) {
-        result = x86_rdmem8(cpu, vaddr) ^ lsb(imm);
-        x86_wrmem8(cpu, vaddr, lsb(result));
+        result = x86_readM8(cpu, vaddr) ^ lsb(imm);
+        x86_writeM8(cpu, vaddr, lsb(result));
 
         if (signbit8(result))
             x86_setflag(cpu, SF);
 
     } else if (size == 16) {
-        result = x86_rdmem16(cpu, vaddr) ^ low16(imm);
-        x86_wrmem16(cpu, vaddr, low16(result));
+        result = x86_readM16(cpu, vaddr) ^ low16(imm);
+        x86_writeM16(cpu, vaddr, low16(result));
 
         if (signbit16(result))
             x86_setflag(cpu, SF);
     } else {
-        result = x86_rdmem32(cpu, vaddr) ^ imm;
-        x86_wrmem32(cpu, vaddr, result);
+        result = x86_readM32(cpu, vaddr) ^ imm;
+        x86_writeM32(cpu, vaddr, result);
 
         if (signbit32(result))
             x86_setflag(cpu, SF);
@@ -118,20 +119,20 @@ static uint32_t x86__mm_mX_immX_locked_xor(void *cpu, moffset32_t vaddr, uint32_
     x86_clearflag(cpu, PF);
 
     if (size == 8) {
-        result = x86_atomic_rdmem8(cpu, vaddr) ^ lsb(imm);
-        x86_atomic_wrmem8(cpu, vaddr, lsb(result));
+        result = x86_atomic_readM8(cpu, vaddr) ^ lsb(imm);
+        x86_atomic_writeM8(cpu, vaddr, lsb(result));
 
         if (signbit8(result))
             x86_setflag(cpu, SF);
     } else if (size == 16) {
-        result = x86_atomic_rdmem16(cpu, vaddr) ^ low16(imm);
-        x86_atomic_wrmem16(cpu, vaddr, low16(result));
+        result = x86_atomic_readM16(cpu, vaddr) ^ low16(imm);
+        x86_atomic_writeM16(cpu, vaddr, low16(result));
 
         if (signbit16(result))
             x86_setflag(cpu, SF);
     } else {
-        result = x86_atomic_rdmem32(cpu, vaddr) ^ imm;
-        x86_atomic_wrmem32(cpu, vaddr, result);
+        result = x86_atomic_readM32(cpu, vaddr) ^ imm;
+        x86_atomic_writeM32(cpu, vaddr, result);
 
         if (signbit32(result))
             x86_setflag(cpu, SF);
@@ -201,59 +202,59 @@ uint32_t x86__mm_r32_imm32_xor(void *cpu, uint8_t reg, uint32_t imm)
 
 uint8_t x86__mm_r8_r8_xor(void *cpu, uint8_t dest, uint8_t reg2)
 {
-    return (uint8_t)x86__mm_rX_immX_xor(cpu, dest, x86_rdreg8(cpu, reg2), 8);
+    return (uint8_t)x86__mm_rX_immX_xor(cpu, dest, x86_readR8(cpu, reg2), 8);
 }
 
 uint16_t x86__mm_r16_r16_xor(void *cpu, uint8_t dest, uint8_t reg2)
 {
-    return (uint16_t)x86__mm_rX_immX_xor(cpu, dest, x86_rdreg16(cpu, reg2), 16);
+    return (uint16_t)x86__mm_rX_immX_xor(cpu, dest, x86_readR16(cpu, reg2), 16);
 }
 
 uint32_t x86__mm_r32_r32_xor(void *cpu, uint8_t dest, uint8_t reg2)
 {
-    return x86__mm_rX_immX_xor(cpu, dest, x86_rdreg32(cpu, reg2), 32);
+    return x86__mm_rX_immX_xor(cpu, dest, x86_readR32(cpu, reg2), 32);
 }
 
 uint8_t x86__mm_m8_r8_xor(void *cpu, moffset32_t vaddr, uint8_t reg, _Bool lock)
 {
     if (lock)
-        return (uint8_t)x86__mm_mX_immX_locked_xor(cpu, vaddr, x86_rdreg8(cpu, reg), 8);
-    return (uint8_t)x86__mm_mX_immX_xor(cpu, vaddr, x86_rdreg8(cpu, reg), 8);
+        return (uint8_t)x86__mm_mX_immX_locked_xor(cpu, vaddr, x86_readR8(cpu, reg), 8);
+    return (uint8_t)x86__mm_mX_immX_xor(cpu, vaddr, x86_readR8(cpu, reg), 8);
 }
 
 uint16_t x86__mm_m16_r16_xor(void *cpu, moffset32_t vaddr, uint8_t reg, _Bool lock)
 {
     if (lock)
-        return (uint16_t)x86__mm_mX_immX_locked_xor(cpu, vaddr, x86_rdreg16(cpu, reg), 16);
-    return (uint16_t)x86__mm_mX_immX_xor(cpu, vaddr, x86_rdreg16(cpu, reg), 16);
+        return (uint16_t)x86__mm_mX_immX_locked_xor(cpu, vaddr, x86_readR16(cpu, reg), 16);
+    return (uint16_t)x86__mm_mX_immX_xor(cpu, vaddr, x86_readR16(cpu, reg), 16);
 }
 
 uint32_t x86__mm_m32_r32_xor(void *cpu, moffset32_t vaddr, uint8_t reg, _Bool lock)
 {
     if (lock)
-        return x86__mm_mX_immX_locked_xor(cpu, vaddr, x86_rdreg32(cpu, reg), 32);
-    return x86__mm_mX_immX_xor(cpu, vaddr, x86_rdreg32(cpu, reg), 32);
+        return x86__mm_mX_immX_locked_xor(cpu, vaddr, x86_readR32(cpu, reg), 32);
+    return x86__mm_mX_immX_xor(cpu, vaddr, x86_readR32(cpu, reg), 32);
 }
 
 uint8_t x86__mm_r8_m8_xor(void *cpu, uint8_t reg, moffset32_t vaddr, _Bool lock)
 {
     if (lock)
-        return (uint8_t)x86__mm_rX_immX_xor(cpu, reg, x86_atomic_rdmem8(cpu, vaddr), 8);
-    return (uint8_t)x86__mm_rX_immX_xor(cpu, reg, x86_rdmem8(cpu, vaddr), 8);
+        return (uint8_t)x86__mm_rX_immX_xor(cpu, reg, x86_atomic_readM8(cpu, vaddr), 8);
+    return (uint8_t)x86__mm_rX_immX_xor(cpu, reg, x86_readM8(cpu, vaddr), 8);
 }
 
 uint16_t x86__mm_r16_m16_xor(void *cpu, uint8_t reg, moffset32_t vaddr, _Bool lock)
 {
     if (lock)
-        return (uint16_t)x86__mm_rX_immX_xor(cpu, reg, x86_atomic_rdmem16(cpu, vaddr), 16);
-    return (uint16_t)x86__mm_rX_immX_xor(cpu, reg, x86_rdmem16(cpu, vaddr), 16);
+        return (uint16_t)x86__mm_rX_immX_xor(cpu, reg, x86_atomic_readM16(cpu, vaddr), 16);
+    return (uint16_t)x86__mm_rX_immX_xor(cpu, reg, x86_readM16(cpu, vaddr), 16);
 }
 
 uint32_t x86__mm_r32_m32_xor(void *cpu, uint8_t reg, moffset32_t vaddr, _Bool lock)
 {
     if (lock)
-        return x86__mm_rX_immX_xor(cpu, reg, x86_atomic_rdmem32(cpu, vaddr), 32);
-    return x86__mm_rX_immX_xor(cpu, reg, x86_rdmem32(cpu, vaddr), 32);
+        return x86__mm_rX_immX_xor(cpu, reg, x86_atomic_readM32(cpu, vaddr), 32);
+    return x86__mm_rX_immX_xor(cpu, reg, x86_readM32(cpu, vaddr), 32);
 }
 
 // POP
@@ -266,13 +267,13 @@ static uint32_t x86__mm_rX_popX(void *cpu, uint8_t reg, int size)
     uint32_t value;
 
     if (size == 16) {
-        value = x86_rdmem16(cpu, x86_rdreg32(cpu, ESP));
-        x86_wrreg16(cpu, reg, value);
-        x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) + 4);
+        value = x86_readM16(cpu, x86_readR32(cpu, ESP));
+        x86_writeR16(cpu, reg, value);
+        x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) + 4);
     } else {
-        value = x86_rdmem32(cpu, x86_rdreg32(cpu, ESP));
-        x86_wrreg32(cpu, reg, value);
-        x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) + 4);
+        value = x86_readM32(cpu, x86_readR32(cpu, ESP));
+        x86_writeR32(cpu, reg, value);
+        x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) + 4);
     }
 
     return value;
@@ -283,13 +284,13 @@ static uint32_t x86__mm_mX_popX(void *cpu, moffset32_t vaddr, int size)
     uint32_t value;
 
     if (size == 16) {
-        value = x86_rdmem16(cpu, x86_rdreg32(cpu, ESP));
-        x86_wrmem16(cpu, vaddr, value);
-        x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) + 4);
+        value = x86_readM16(cpu, x86_readR32(cpu, ESP));
+        x86_writeM16(cpu, vaddr, value);
+        x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) + 4);
     } else {
-        value = x86_rdmem32(cpu, x86_rdreg32(cpu, ESP));
-        x86_wrmem32(cpu, vaddr, value);
-        x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) + 4);
+        value = x86_readM32(cpu, x86_readR32(cpu, ESP));
+        x86_writeM32(cpu, vaddr, value);
+        x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) + 4);
     }
 
     return value;
@@ -297,10 +298,10 @@ static uint32_t x86__mm_mX_popX(void *cpu, moffset32_t vaddr, int size)
 
 uint16_t x86__mm_sreg_pop(void *cpu, uint8_t sreg)
 {
-    uint16_t value = x86_rdmem16(cpu, ESP);
+    uint16_t value = x86_readM16(cpu, ESP);
 
     x86_wrsreg(cpu, sreg, value);
-    x86_wrsreg(cpu, ESP, x86_rdreg32(cpu, ESP) - 4);
+    x86_wrsreg(cpu, ESP, x86_readR32(cpu, ESP) - 4);
 
     return value;
 }
@@ -330,42 +331,42 @@ static void x86__mm_immX_push(void *, uint32_t, int);
 
 static void x86__mm_immX_push(void *cpu, uint32_t imm, int size)
 {
-    reg32_t esp = x86_rdreg32(cpu, ESP);
+    reg32_t esp = x86_readR32(cpu, ESP);
 
     if (size == 16) {
-        x86_wrmem16(cpu, esp - 2, imm);
-        x86_wrreg32(cpu, ESP, esp - 2);
+        x86_writeM16(cpu, esp - 2, imm);
+        x86_writeR32(cpu, ESP, esp - 2);
     } else  {
-        x86_wrmem32(cpu, esp - 4, imm);
-        x86_wrreg32(cpu, ESP, esp - 4);
+        x86_writeM32(cpu, esp - 4, imm);
+        x86_writeR32(cpu, ESP, esp - 4);
     }
 }
 
 void x86__mm_r32_push(void *cpu, uint8_t reg)
 {
-    x86__mm_immX_push(cpu, x86_rdreg32(cpu, reg), 32);
+    x86__mm_immX_push(cpu, x86_readR32(cpu, reg), 32);
 }
 
 void x86__mm_m32_push(void *cpu, moffset32_t vaddr)
 {
-    x86__mm_immX_push(cpu, x86_rdmem32(cpu, vaddr), 32);
+    x86__mm_immX_push(cpu, x86_readM32(cpu, vaddr), 32);
 }
 
 void x86__mm_r16_push(void *cpu, uint8_t reg)
 {
-    x86__mm_immX_push(cpu, x86_rdreg16(cpu, reg), 16);
+    x86__mm_immX_push(cpu, x86_readR16(cpu, reg), 16);
 }
 
 void x86__mm_m16_push(void *cpu, moffset32_t vaddr)
 {
-    x86__mm_immX_push(cpu, x86_rdmem16(cpu, vaddr), 16);
+    x86__mm_immX_push(cpu, x86_readM16(cpu, vaddr), 16);
 }
 
 void x86__mm_sreg_push(void *cpu, uint8_t reg)
 {
-    reg16_t esp = x86_rdreg16(cpu, ESP);
-    x86_wrmem16(cpu, esp, x86_rdsreg(cpu, reg));
-    x86_wrreg32(cpu, ESP, esp - 2);
+    reg16_t esp = x86_readR16(cpu, ESP);
+    x86_writeM16(cpu, esp, x86_rdsreg(cpu, reg));
+    x86_writeR32(cpu, ESP, esp - 2);
 }
 
 void x86__mm_imm16_push(void *cpu, uint16_t imm)
@@ -395,22 +396,22 @@ static uint32_t x86__mm_rX_immX_and(void *cpu, uint8_t reg, uint32_t imm, int si
     x86_clearflag(cpu, PF);
 
     if (size == 8) {
-        result = x86_rdreg8(cpu, reg) & sign8to32(lsb(imm));
-        x86_wrreg8(cpu, reg, lsb(result));
+        result = x86_readR8(cpu, reg) & sign8to32(lsb(imm));
+        x86_writeR8(cpu, reg, lsb(result));
 
         if (signbit8(result))
             x86_setflag(cpu, SF);
 
     } else if (size == 16) {
-        result = x86_rdreg16(cpu, reg) & sign16to32(low16(imm));
-        x86_wrreg16(cpu, reg, low16(result));
+        result = x86_readR16(cpu, reg) & sign16to32(low16(imm));
+        x86_writeR16(cpu, reg, low16(result));
 
         if (signbit16(result))
             x86_setflag(cpu, SF);
 
     } else {
-        result = x86_rdreg32(cpu, reg) & imm;
-        x86_wrreg32(cpu, reg, result);
+        result = x86_readR32(cpu, reg) & imm;
+        x86_writeR32(cpu, reg, result);
 
         if (signbit32(result))
             x86_setflag(cpu, SF);
@@ -436,22 +437,22 @@ static uint32_t x86__mm_mX_immX_and(void *cpu, moffset32_t vaddr, uint32_t imm, 
     x86_clearflag(cpu, PF);
 
     if (size == 8) {
-        result = x86_rdmem8(cpu, vaddr) & sign8to32(lsb(imm));
-        x86_wrmem8(cpu, vaddr, lsb(result));
+        result = x86_readM8(cpu, vaddr) & sign8to32(lsb(imm));
+        x86_writeM8(cpu, vaddr, lsb(result));
 
         if (signbit8(result))
             x86_setflag(cpu, SF);
 
     } else if (size == 16) {
-        result = x86_rdmem16(cpu, vaddr) & sign16to32(low16(imm));
-        x86_wrmem16(cpu, vaddr, low16(result));
+        result = x86_readM16(cpu, vaddr) & sign16to32(low16(imm));
+        x86_writeM16(cpu, vaddr, low16(result));
 
         if (signbit16(result))
             x86_setflag(cpu, SF);
 
     } else {
-        result = x86_rdmem32(cpu, vaddr) & imm;
-        x86_wrmem32(cpu, vaddr, result);
+        result = x86_readM32(cpu, vaddr) & imm;
+        x86_writeM32(cpu, vaddr, result);
 
         if (signbit32(result))
             x86_setflag(cpu, SF);
@@ -478,22 +479,22 @@ static uint32_t x86__mm_mX_immX_locked_and(void *cpu, moffset32_t vaddr, uint32_
     x86_clearflag(cpu, PF);
 
     if (size == 8) {
-        result = x86_atomic_rdmem8(cpu, vaddr) & sign8to32(lsb(imm));
-        x86_atomic_wrmem8(cpu, vaddr, lsb(result));
+        result = x86_atomic_readM8(cpu, vaddr) & sign8to32(lsb(imm));
+        x86_atomic_writeM8(cpu, vaddr, lsb(result));
 
         if (signbit8(result))
             x86_setflag(cpu, SF);
 
     } else if (size == 16) {
-        result = x86_atomic_rdmem16(cpu, vaddr) & sign16to32(low16(imm));
-        x86_atomic_wrmem16(cpu, vaddr, low16(result));
+        result = x86_atomic_readM16(cpu, vaddr) & sign16to32(low16(imm));
+        x86_atomic_writeM16(cpu, vaddr, low16(result));
 
         if (signbit16(result))
             x86_setflag(cpu, SF);
 
     } else {
-        result = x86_atomic_rdmem32(cpu, vaddr) & imm;
-        x86_atomic_wrmem32(cpu, vaddr, result);
+        result = x86_atomic_readM32(cpu, vaddr) & imm;
+        x86_atomic_writeM32(cpu, vaddr, result);
 
         if (signbit32(result))
             x86_setflag(cpu, SF);
@@ -563,116 +564,122 @@ uint32_t x86__mm_m32_imm32_and(void *cpu, moffset32_t vaddr, uint32_t imm, _Bool
 
 uint8_t x86__mm_r8_r8_and(void *cpu, uint8_t dest, uint8_t reg2)
 {
-    return (uint8_t)x86__mm_rX_immX_and(cpu, dest, x86_rdreg8(cpu, reg2), 8);
+    return (uint8_t)x86__mm_rX_immX_and(cpu, dest, x86_readR8(cpu, reg2), 8);
 }
 
 uint16_t x86__mm_r16_r16_and(void *cpu, uint8_t dest, uint8_t reg2)
 {
-    return (uint16_t)x86__mm_rX_immX_and(cpu, dest, x86_rdreg16(cpu, reg2), 16);
+    return (uint16_t)x86__mm_rX_immX_and(cpu, dest, x86_readR16(cpu, reg2), 16);
 }
 
 uint32_t x86__mm_r32_r32_and(void *cpu, uint8_t dest, uint8_t reg2)
 {
-    return x86__mm_rX_immX_and(cpu, dest, x86_rdreg32(cpu, reg2), 32);
+    return x86__mm_rX_immX_and(cpu, dest, x86_readR32(cpu, reg2), 32);
 }
 
 uint8_t x86__mm_m8_r8_and(void *cpu, moffset32_t vaddr, uint8_t reg, _Bool lock)
 {
     if (lock)
-        return (uint8_t)x86__mm_mX_immX_locked_and(cpu, vaddr, x86_rdreg8(cpu, reg), 8);
-    return (uint8_t)x86__mm_mX_immX_and(cpu, vaddr, x86_rdreg8(cpu, reg), 8);
+        return (uint8_t)x86__mm_mX_immX_locked_and(cpu, vaddr, x86_readR8(cpu, reg), 8);
+    return (uint8_t)x86__mm_mX_immX_and(cpu, vaddr, x86_readR8(cpu, reg), 8);
 }
 
 uint16_t x86__mm_m16_r16_and(void *cpu, moffset32_t vaddr, uint8_t reg, _Bool lock)
 {
     if (lock)
-        return (uint16_t)x86__mm_mX_immX_locked_and(cpu, vaddr, x86_rdreg16(cpu, reg), 16);
-    return (uint16_t)x86__mm_mX_immX_and(cpu, vaddr, x86_rdreg16(cpu, reg), 16);
+        return (uint16_t)x86__mm_mX_immX_locked_and(cpu, vaddr, x86_readR16(cpu, reg), 16);
+    return (uint16_t)x86__mm_mX_immX_and(cpu, vaddr, x86_readR16(cpu, reg), 16);
 }
 
 uint32_t x86__mm_m32_r32_and(void *cpu, moffset32_t vaddr, uint8_t reg, _Bool lock)
 {
     if (lock)
-        return x86__mm_mX_immX_locked_and(cpu, vaddr, x86_rdreg32(cpu, reg), 32);
-    return x86__mm_mX_immX_and(cpu, vaddr, x86_rdreg32(cpu, reg), 16);
+        return x86__mm_mX_immX_locked_and(cpu, vaddr, x86_readR32(cpu, reg), 32);
+    return x86__mm_mX_immX_and(cpu, vaddr, x86_readR32(cpu, reg), 16);
 }
 
 uint8_t x86__mm_r8_m8_and(void *cpu, uint8_t reg, moffset32_t vaddr, _Bool lock)
 {
     if (lock)
-        return (uint8_t)x86__mm_rX_immX_and(cpu, reg, x86_atomic_rdmem8(cpu, vaddr), 8);
-    return (uint8_t)x86__mm_rX_immX_and(cpu, reg, x86_rdmem8(cpu, vaddr), 8);
+        return (uint8_t)x86__mm_rX_immX_and(cpu, reg, x86_atomic_readM8(cpu, vaddr), 8);
+    return (uint8_t)x86__mm_rX_immX_and(cpu, reg, x86_readM8(cpu, vaddr), 8);
 }
 
 uint16_t x86__mm_r16_m16_and(void *cpu, uint8_t reg, moffset32_t vaddr, _Bool lock)
 {
     if (lock)
-        return (uint16_t)x86__mm_rX_immX_and(cpu, reg, x86_atomic_rdmem16(cpu, vaddr), 16);
-    return (uint16_t)x86__mm_rX_immX_and(cpu, reg, x86_rdmem16(cpu, vaddr), 16);
+        return (uint16_t)x86__mm_rX_immX_and(cpu, reg, x86_atomic_readM16(cpu, vaddr), 16);
+    return (uint16_t)x86__mm_rX_immX_and(cpu, reg, x86_readM16(cpu, vaddr), 16);
 }
 
 uint32_t x86__mm_r32_m32_and(void *cpu, uint8_t reg, moffset32_t vaddr, _Bool lock)
 {
     if (lock)
-        return x86__mm_rX_immX_and(cpu, reg, x86_atomic_rdmem32(cpu, vaddr), 32);
-    return x86__mm_rX_immX_and(cpu, reg, x86_rdmem32(cpu, vaddr), 32);
+        return x86__mm_rX_immX_and(cpu, reg, x86_atomic_readM32(cpu, vaddr), 32);
+    return x86__mm_rX_immX_and(cpu, reg, x86_readM32(cpu, vaddr), 32);
 }
 
+#include "../system.h"
 
 // CALL
 static void x86__mm_abs_call(void *, moffset32_t);
 
-static void x86__mm_abs_call(void *cpu, moffset32_t absladdr)
+static void x86__mm_abs_call(void *cpu, moffset32_t vaddr)
 {
+    tracer_push(x86_tracer(cpu), vaddr, x86_readR32(cpu, EIP), x86_readR32(cpu, ESP));
+
     x86__mm_r32_push(cpu, EIP);
-
-    x86_cpustat_push_callstack(cpu, absladdr);
-
-    x86_wrreg32(cpu, EIP, absladdr);
+    x86_update_eip_absolute(cpu, vaddr);
 }
 
 void x86__mm_rel16_call(void *cpu, int16_t moffset)
 {
-    x86__mm_abs_call(cpu, x86_rdreg32(cpu, EIP) + moffset);
+    x86__mm_abs_call(cpu, x86_readR32(cpu, EIP) + moffset);
 }
 
 void x86__mm_rel32_call(void *cpu, int32_t moffset)
 {
-    x86__mm_abs_call(cpu, x86_rdreg32(cpu, EIP) + moffset);
+    x86__mm_abs_call(cpu, x86_readR32(cpu, EIP) + moffset);
 }
 
 void x86__mm_r16_call(void *cpu, uint8_t reg)
 {
-    x86__mm_abs_call(cpu, x86_rdreg16(cpu, reg));
+    x86__mm_abs_call(cpu, x86_readR16(cpu, reg));
 }
 
 void x86__mm_r32_call(void *cpu, uint8_t reg)
 {
-    x86__mm_abs_call(cpu, x86_rdreg32(cpu, reg));
+    x86__mm_abs_call(cpu, x86_readR32(cpu, reg));
 }
 
 void x86__mm_m16_call(void *cpu, moffset32_t vaddr)
 {
-    x86__mm_abs_call(cpu, x86_rdmem16(cpu, vaddr));
+    x86__mm_abs_call(cpu, x86_readM16(cpu, vaddr));
 }
 
 void x86__mm_m32_call(void *cpu, moffset32_t vaddr)
 {
-    x86__mm_abs_call(cpu, x86_rdmem32(cpu, vaddr));
+    x86__mm_abs_call(cpu, x86_readM32(cpu, vaddr));
 }
 
 void x86__mm_far_ptr16_call(void *cpu, uint16_t segselector, uint16_t moffset)
 {
+    tracer_push(x86_tracer(cpu), moffset, x86_readR32(cpu, EIP), x86_readR32(cpu, ESP));
+
     x86__mm_imm32_push(cpu, sign16to32(x86_rdsreg(cpu, CS)));
-    x86_wrreg16(cpu, CS, segselector);
-    x86__mm_abs_call(cpu, moffset);
+    x86_writeR16(cpu, CS, segselector);
+    x86__mm_r32_push(cpu, EIP);
+    x86_update_eip_absolute(cpu, moffset);
 }
 
 void x86__mm_far_ptr32_call(void *cpu, uint16_t segselector, uint32_t moffset)
 {
+    tracer_push(x86_tracer(cpu), moffset, x86_readR32(cpu, EIP), x86_readR32(cpu, ESP));
+
     x86__mm_imm32_push(cpu, sign16to32(x86_rdsreg(cpu, CS)));
-    x86_wrreg16(cpu, CS, segselector);
-    x86__mm_abs_call(cpu, moffset);
+    x86_writeR16(cpu, CS, segselector);
+    x86__mm_r32_push(cpu, EIP);
+    x86_update_eip_absolute(cpu, moffset);
 }
 
 
@@ -680,96 +687,96 @@ void x86__mm_far_ptr32_call(void *cpu, uint16_t segselector, uint32_t moffset)
 
 void x86__mm_r8_r8_mov(void *cpu, uint8_t dest, uint8_t src)
 {
-    x86_wrreg8(cpu, dest, x86_rdreg8(cpu, src));
+    x86_writeR8(cpu, dest, x86_readR8(cpu, src));
 }
 
 void x86__mm_r16_r16_mov(void *cpu, uint8_t dest, uint8_t src)
 {
-    x86_wrreg16(cpu, dest, x86_rdreg16(cpu, src));
+    x86_writeR16(cpu, dest, x86_readR16(cpu, src));
 }
 
 void x86__mm_r32_r32_mov(void *cpu, uint8_t dest, uint8_t src)
 {
-    x86_wrreg32(cpu, dest, x86_rdreg32(cpu, src));
+    x86_writeR32(cpu, dest, x86_readR32(cpu, src));
 }
 
 void x86__mm_m8_r8_mov(void *cpu, moffset32_t vaddr, uint8_t src)
 {
-    x86_wrmem8(cpu, vaddr, x86_rdreg8(cpu, src));
+    x86_writeM8(cpu, vaddr, x86_readR8(cpu, src));
 }
 
 void x86__mm_m16_r16_mov(void *cpu, moffset32_t dest, uint8_t src)
 {
-    x86_wrmem16(cpu, dest, x86_rdreg16(cpu, src));
+    x86_writeM16(cpu, dest, x86_readR16(cpu, src));
 }
 
 void x86__mm_m32_r32_mov(void *cpu, moffset32_t dest, uint8_t src)
 {
-    x86_wrmem32(cpu, dest, x86_rdreg32(cpu, src));
+    x86_writeM32(cpu, dest, x86_readR32(cpu, src));
 }
 
 void x86__mm_r8_m8_mov(void *cpu, uint8_t dest, moffset32_t src)
 {
-    x86_wrreg8(cpu, dest, x86_rdmem8(cpu, src));
+    x86_writeR8(cpu, dest, x86_readM8(cpu, src));
 }
 
 void x86__mm_r16_m16_mov(void *cpu, uint8_t dest, moffset32_t src)
 {
-    x86_wrreg16(cpu, dest, x86_rdmem16(cpu, src));
+    x86_writeR16(cpu, dest, x86_readM16(cpu, src));
 }
 
 void x86__mm_r32_m32_mov(void *cpu, uint8_t dest, moffset32_t src)
 {
-    x86_wrreg32(cpu, dest, x86_rdmem32(cpu, src));
+    x86_writeR32(cpu, dest, x86_readM32(cpu, src));
 }
 
 void x86__mm_r16_sreg_mov(void *cpu, uint8_t dest, uint8_t src)
 {
-    x86_wrreg16(cpu, dest, x86_rdsreg(cpu, src));
+    x86_writeR16(cpu, dest, x86_rdsreg(cpu, src));
 }
 
 void x86__mm_m16_sreg_mov(void *cpu, moffset32_t dest, uint8_t src)
 {
-    x86_wrmem16(cpu, dest, x86_rdsreg(cpu, src));
+    x86_writeM16(cpu, dest, x86_rdsreg(cpu, src));
 }
 
 void x86__mm_sreg_r16_mov(void *cpu, uint8_t dest, uint8_t src)
 {
-    x86_wrsreg(cpu, dest, x86_rdreg16(cpu, src));
+    x86_wrsreg(cpu, dest, x86_readR16(cpu, src));
 }
 
 void x86__mm_sreg_m16_mov(void *cpu, uint8_t dest, moffset32_t src)
 {
-    x86_wrsreg(cpu, dest, x86_rdmem16(cpu, src));
+    x86_wrsreg(cpu, dest, x86_readM16(cpu, src));
 }
 
 void x86__mm_r8_imm8_mov(void *cpu, uint8_t dest, uint8_t imm)
 {
-    x86_wrreg8(cpu, dest, imm);
+    x86_writeR8(cpu, dest, imm);
 }
 void x86__mm_r16_imm16_mov(void *cpu, uint8_t dest, uint16_t imm)
 {
-    x86_wrreg16(cpu, dest, imm);
+    x86_writeR16(cpu, dest, imm);
 }
 
 void x86__mm_r32_imm32_mov(void *cpu, uint8_t dest, uint32_t imm)
 {
-    x86_wrreg32(cpu, dest, imm);
+    x86_writeR32(cpu, dest, imm);
 }
 
 void x86__mm_m8_imm8_mov(void *cpu, uint8_t dest, uint8_t imm)
 {
-    x86_wrmem8(cpu, dest, imm);
+    x86_writeM8(cpu, dest, imm);
 }
 
 void x86__mm_m16_imm16_mov(void *cpu, uint8_t dest, uint8_t imm)
 {
-    x86_wrmem16(cpu, dest, imm);
+    x86_writeM16(cpu, dest, imm);
 }
 
 void x86__mm_m32_imm32_mov(void *cpu, uint8_t dest, uint8_t imm)
 {
-    x86_wrmem32(cpu, dest, imm);
+    x86_writeM32(cpu, dest, imm);
 }
 
 // RET
@@ -798,16 +805,16 @@ void x86__mm_imm16_near_ret16(void *cpu, uint16_t imm)
 {
     x86__mm_r16_pop(cpu, EIP);
 
-    x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) - imm);
-    x86_cpustat_pop_callstack(cpu);
+    x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) - imm);
+    tracer_pop(x86_tracer(cpu));
 }
 
 void x86__mm_imm16_near_ret32(void *cpu, uint16_t imm)
 {
     x86__mm_r32_pop(cpu, EIP);
 
-    x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) - imm);
-    x86_cpustat_pop_callstack(cpu);
+    x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) - imm);
+    tracer_pop(x86_tracer(cpu));
 }
 
 void x86__mm_imm16_far_ret16(void *cpu, uint16_t imm)
@@ -815,8 +822,8 @@ void x86__mm_imm16_far_ret16(void *cpu, uint16_t imm)
     x86__mm_r16_pop(cpu, EIP);
     x86__mm_sreg_pop(cpu, CS);
 
-    x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) - imm);
-    x86_cpustat_pop_callstack(cpu);
+    x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) - imm);
+    tracer_pop(x86_tracer(cpu));
 }
 
 void x86__mm_imm16_far_ret32(void *cpu, uint16_t imm)
@@ -824,9 +831,9 @@ void x86__mm_imm16_far_ret32(void *cpu, uint16_t imm)
     x86__mm_r32_pop(cpu, EIP);
     x86__mm_sreg_pop(cpu, CS);
 
-    x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) - imm);
+    x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) - imm);
 
-    x86_cpustat_pop_callstack(cpu);
+    tracer_pop(x86_tracer(cpu));
 }
 
 
@@ -850,9 +857,9 @@ static uint32_t x86__mm_mX_immX_add(void *cpu, moffset32_t vaddr, uint32_t imm, 
     x86_clearflag(cpu, PF);
 
     if (size == 8) {
-        operand1 = x86_rdmem8(cpu, vaddr);
+        operand1 = x86_readM8(cpu, vaddr);
         result = lsb(operand1) + lsb(imm);
-        x86_wrmem8(cpu, vaddr, lsb(result));
+        x86_writeM8(cpu, vaddr, lsb(result));
 
         if (signbit8(result))
             x86_setflag(cpu, SF);
@@ -863,9 +870,9 @@ static uint32_t x86__mm_mX_immX_add(void *cpu, moffset32_t vaddr, uint32_t imm, 
         }
 
     } else if (size == 16) {
-        operand1 = x86_rdmem16(cpu, vaddr);
+        operand1 = x86_readM16(cpu, vaddr);
         result = low16(operand1) + low16(imm);
-        x86_wrmem16(cpu, vaddr, low16(result));
+        x86_writeM16(cpu, vaddr, low16(result));
 
         if (signbit16(result))
             x86_setflag(cpu, SF);
@@ -876,9 +883,9 @@ static uint32_t x86__mm_mX_immX_add(void *cpu, moffset32_t vaddr, uint32_t imm, 
         }
 
     } else {
-        operand1 = x86_rdmem32(cpu, vaddr);
+        operand1 = x86_readM32(cpu, vaddr);
         result = operand1 + imm;
-        x86_wrmem32(cpu, vaddr, result);
+        x86_writeM32(cpu, vaddr, result);
 
         if (signbit32(result))
             x86_setflag(cpu, SF);
@@ -914,10 +921,10 @@ static uint32_t x86__mm_mX_immX_locked_add(void *cpu, moffset32_t vaddr, uint32_
     x86_clearflag(cpu, PF);
 
     if (size == 8) {
-        operand1 = x86_atomic_rdmem8(cpu, vaddr);
+        operand1 = x86_atomic_readM8(cpu, vaddr);
         result = lsb(operand1) + lsb(imm);
 
-        x86_atomic_wrmem8(cpu, vaddr, lsb(result));
+        x86_atomic_writeM8(cpu, vaddr, lsb(result));
 
         if (signbit8(result))
             x86_setflag(cpu, SF);
@@ -928,9 +935,9 @@ static uint32_t x86__mm_mX_immX_locked_add(void *cpu, moffset32_t vaddr, uint32_
         }
 
     } else if (size == 16) {
-        operand1 = x86_atomic_rdmem16(cpu, vaddr);
+        operand1 = x86_atomic_readM16(cpu, vaddr);
         result = low16(operand1) + low16(imm);
-        x86_atomic_wrmem16(cpu, vaddr, low16(result));
+        x86_atomic_writeM16(cpu, vaddr, low16(result));
 
         if (signbit16(result))
             x86_setflag(cpu, SF);
@@ -941,9 +948,9 @@ static uint32_t x86__mm_mX_immX_locked_add(void *cpu, moffset32_t vaddr, uint32_
         }
 
     } else {
-        operand1 = x86_atomic_rdmem32(cpu, vaddr);
+        operand1 = x86_atomic_readM32(cpu, vaddr);
         result = operand1 + imm;
-        x86_atomic_wrmem32(cpu, vaddr, result);
+        x86_atomic_writeM32(cpu, vaddr, result);
 
         if (signbit32(result))
             x86_setflag(cpu, SF);
@@ -979,10 +986,10 @@ static uint32_t x86__mm_rX_immX_add(void *cpu, uint8_t dest, uint32_t imm, size_
     x86_clearflag(cpu, PF);
 
     if (size == 8) {
-        operand1 = x86_rdreg8(cpu, dest);
+        operand1 = x86_readR8(cpu, dest);
         result = lsb(operand1) + lsb(imm);
 
-        x86_wrreg8(cpu, dest, lsb(result));
+        x86_writeR8(cpu, dest, lsb(result));
 
         if (signbit8(result))
             x86_setflag(cpu, SF);
@@ -993,9 +1000,9 @@ static uint32_t x86__mm_rX_immX_add(void *cpu, uint8_t dest, uint32_t imm, size_
         }
 
     } else if (size == 16) {
-        operand1 = x86_rdreg16(cpu, dest);
+        operand1 = x86_readR16(cpu, dest);
         result = low16(operand1) + low16(imm);
-        x86_wrreg16(cpu, dest, low16(result));
+        x86_writeR16(cpu, dest, low16(result));
 
         if (signbit16(result))
             x86_setflag(cpu, SF);
@@ -1006,9 +1013,9 @@ static uint32_t x86__mm_rX_immX_add(void *cpu, uint8_t dest, uint32_t imm, size_
         }
 
     } else {
-        operand1 = x86_rdreg32(cpu, dest);
+        operand1 = x86_readR32(cpu, dest);
         result = operand1 + imm;
-        x86_wrreg32(cpu, dest, result);
+        x86_writeR32(cpu, dest, result);
 
         if (signbit32(result))
             x86_setflag(cpu, SF);
@@ -1084,59 +1091,59 @@ uint32_t x86__mm_r32_imm32_add(void *cpu, uint8_t dest, uint32_t imm)
 
 uint8_t x86__mm_r8_r8_add(void *cpu, uint8_t dest, uint8_t src)
 {
-    return (uint8_t)x86__mm_rX_immX_add(cpu, dest, x86_rdreg8(cpu, src), 8);
+    return (uint8_t)x86__mm_rX_immX_add(cpu, dest, x86_readR8(cpu, src), 8);
 }
 
 uint8_t x86__mm_m8_r8_add(void *cpu, moffset32_t vaddr, uint8_t src, _Bool lock)
 {
     if (lock)
-        return (uint8_t)x86__mm_mX_immX_locked_add(cpu, vaddr, x86_rdreg8(cpu, src), 8);
-    return (uint8_t)x86__mm_mX_immX_add(cpu, vaddr, x86_rdreg8(cpu, src), 8);
+        return (uint8_t)x86__mm_mX_immX_locked_add(cpu, vaddr, x86_readR8(cpu, src), 8);
+    return (uint8_t)x86__mm_mX_immX_add(cpu, vaddr, x86_readR8(cpu, src), 8);
 }
 
 uint8_t x86__mm_r8_m8_add(void *cpu, uint8_t dest, moffset32_t vaddr, _Bool lock)
 {
     if (lock)
-        return (uint8_t)x86__mm_rX_immX_add(cpu, dest, x86_atomic_rdmem8(cpu, vaddr), 8);
-    return (uint8_t)x86__mm_rX_immX_add(cpu, vaddr, x86_rdmem8(cpu, vaddr), 8);
+        return (uint8_t)x86__mm_rX_immX_add(cpu, dest, x86_atomic_readM8(cpu, vaddr), 8);
+    return (uint8_t)x86__mm_rX_immX_add(cpu, vaddr, x86_readM8(cpu, vaddr), 8);
 }
 
 uint16_t x86__mm_r16_r16_add(void *cpu, uint8_t dest, uint8_t src)
 {
-    return (u_int16_t)x86__mm_rX_immX_add(cpu, dest, x86_rdreg16(cpu, src), 16);
+    return (u_int16_t)x86__mm_rX_immX_add(cpu, dest, x86_readR16(cpu, src), 16);
 }
 
 uint16_t x86__mm_m16_r16_add(void *cpu, moffset32_t vaddr, uint8_t src, _Bool lock)
 {
     if (lock)
-        return (uint16_t)x86__mm_mX_immX_locked_add(cpu, vaddr, x86_rdreg16(cpu, src), 16);
-    return (uint16_t)x86__mm_mX_immX_add(cpu, vaddr, x86_rdreg16(cpu, src), 16);
+        return (uint16_t)x86__mm_mX_immX_locked_add(cpu, vaddr, x86_readR16(cpu, src), 16);
+    return (uint16_t)x86__mm_mX_immX_add(cpu, vaddr, x86_readR16(cpu, src), 16);
 }
 
 uint16_t x86__mm_r16_m16_add(void *cpu, uint8_t dest, moffset32_t vaddr, _Bool lock)
 {
     if (lock)
-        return (uint16_t)x86__mm_rX_immX_add(cpu, dest, x86_atomic_rdmem16(cpu, vaddr), 16);
-    return (uint16_t)x86__mm_rX_immX_add(cpu, vaddr, x86_rdmem16(cpu, vaddr), 16);
+        return (uint16_t)x86__mm_rX_immX_add(cpu, dest, x86_atomic_readM16(cpu, vaddr), 16);
+    return (uint16_t)x86__mm_rX_immX_add(cpu, vaddr, x86_readM16(cpu, vaddr), 16);
 }
 
 uint32_t x86__mm_r32_r32_add(void *cpu, uint8_t dest, uint8_t src)
 {
-    return x86__mm_rX_immX_add(cpu, dest, x86_rdreg32(cpu, src), 32);
+    return x86__mm_rX_immX_add(cpu, dest, x86_readR32(cpu, src), 32);
 }
 
 uint32_t x86__mm_m32_r32_add(void *cpu, moffset32_t vaddr, uint8_t src, _Bool lock)
 {
     if (lock)
-        return x86__mm_mX_immX_locked_add(cpu, vaddr, x86_rdreg32(cpu, src), 32);
-    return x86__mm_mX_immX_add(cpu, vaddr, x86_rdreg32(cpu, src), 32);
+        return x86__mm_mX_immX_locked_add(cpu, vaddr, x86_readR32(cpu, src), 32);
+    return x86__mm_mX_immX_add(cpu, vaddr, x86_readR32(cpu, src), 32);
 }
 
 uint32_t x86__mm_r32_m32_add(void *cpu, uint8_t dest, moffset32_t vaddr, _Bool lock)
 {
     if (lock)
-        return x86__mm_rX_immX_add(cpu, dest, x86_atomic_rdmem32(cpu, vaddr), 32);
-    return x86__mm_rX_immX_add(cpu, vaddr, x86_rdmem32(cpu, vaddr), 32);
+        return x86__mm_rX_immX_add(cpu, dest, x86_atomic_readM32(cpu, vaddr), 32);
+    return x86__mm_rX_immX_add(cpu, vaddr, x86_readM32(cpu, vaddr), 32);
 }
 
 
@@ -1145,12 +1152,12 @@ uint32_t x86__mm_r32_m32_add(void *cpu, uint8_t dest, moffset32_t vaddr, _Bool l
 
 void x86__mm_r16_m_lea(void *cpu, uint8_t dest, moffset16_t vaddr)
 {
-    x86_wrreg16(cpu, dest, vaddr);
+    x86_writeR16(cpu, dest, vaddr);
 }
 
 void x86__mm_r32_m_lea(void *cpu, uint8_t dest, moffset32_t vaddr)
 {
-    x86_wrreg32(cpu, dest, vaddr);
+    x86_writeR32(cpu, dest, vaddr);
 }
 
 
@@ -1173,9 +1180,9 @@ static uint32_t x86__mm_mX_immX_sub(void *cpu, moffset32_t vaddr, uint32_t imm, 
     x86_clearflag(cpu, PF);
 
     if (size == 8) {
-        operand1 = x86_rdmem8(cpu, vaddr);
+        operand1 = x86_readM8(cpu, vaddr);
         result = lsb(operand1) - lsb(imm);
-        x86_wrmem8(cpu, vaddr, lsb(result));
+        x86_writeM8(cpu, vaddr, lsb(result));
 
         if (signbit8(result))
             x86_setflag(cpu, SF);
@@ -1186,9 +1193,9 @@ static uint32_t x86__mm_mX_immX_sub(void *cpu, moffset32_t vaddr, uint32_t imm, 
         }
 
     } else if (size == 16) {
-        operand1 = x86_rdmem16(cpu, vaddr);
+        operand1 = x86_readM16(cpu, vaddr);
         result = low16(operand1) - low16(imm);
-        x86_wrmem16(cpu, vaddr, low16(result));
+        x86_writeM16(cpu, vaddr, low16(result));
 
         if (signbit16(result))
             x86_setflag(cpu, SF);
@@ -1199,9 +1206,9 @@ static uint32_t x86__mm_mX_immX_sub(void *cpu, moffset32_t vaddr, uint32_t imm, 
         }
 
     } else {
-        operand1 = x86_rdmem32(cpu, vaddr);
+        operand1 = x86_readM32(cpu, vaddr);
         result = operand1 - imm;
-        x86_wrmem32(cpu, vaddr, result);
+        x86_writeM32(cpu, vaddr, result);
 
         if (signbit32(result))
             x86_setflag(cpu, SF);
@@ -1237,10 +1244,10 @@ static uint32_t x86__mm_mX_immX_locked_sub(void *cpu, moffset32_t vaddr, uint32_
     x86_clearflag(cpu, PF);
 
     if (size == 8) {
-        operand1 = x86_atomic_rdmem8(cpu, vaddr);
+        operand1 = x86_atomic_readM8(cpu, vaddr);
         result = lsb(operand1) - lsb(imm);
 
-        x86_atomic_wrmem8(cpu, vaddr, lsb(result));
+        x86_atomic_writeM8(cpu, vaddr, lsb(result));
 
         if (signbit8(result))
             x86_setflag(cpu, SF);
@@ -1251,9 +1258,9 @@ static uint32_t x86__mm_mX_immX_locked_sub(void *cpu, moffset32_t vaddr, uint32_
         }
 
     } else if (size == 16) {
-        operand1 = x86_atomic_rdmem16(cpu, vaddr);
+        operand1 = x86_atomic_readM16(cpu, vaddr);
         result = low16(operand1) - low16(imm);
-        x86_atomic_wrmem16(cpu, vaddr, low16(result));
+        x86_atomic_writeM16(cpu, vaddr, low16(result));
 
         if (signbit16(result))
             x86_setflag(cpu, SF);
@@ -1264,9 +1271,9 @@ static uint32_t x86__mm_mX_immX_locked_sub(void *cpu, moffset32_t vaddr, uint32_
         }
 
     } else {
-        operand1 = x86_atomic_rdmem32(cpu, vaddr);
+        operand1 = x86_atomic_readM32(cpu, vaddr);
         result = operand1 - imm;
-        x86_atomic_wrmem32(cpu, vaddr, result);
+        x86_atomic_writeM32(cpu, vaddr, result);
 
         if (signbit32(result))
             x86_setflag(cpu, SF);
@@ -1304,10 +1311,10 @@ static uint32_t x86__mm_rX_immX_sub(void *cpu, uint8_t dest, uint32_t imm, size_
     x86_clearflag(cpu, PF);
 
     if (size == 8) {
-        operand1 = x86_rdreg8(cpu, dest);
+        operand1 = x86_readR8(cpu, dest);
         result = lsb(operand1) - lsb(imm);
 
-        x86_wrreg8(cpu, dest, lsb(result));
+        x86_writeR8(cpu, dest, lsb(result));
 
         if (signbit8(result))
             x86_setflag(cpu, SF);
@@ -1318,9 +1325,9 @@ static uint32_t x86__mm_rX_immX_sub(void *cpu, uint8_t dest, uint32_t imm, size_
         }
 
     } else if (size == 16) {
-        operand1 = x86_rdreg16(cpu, dest);
+        operand1 = x86_readR16(cpu, dest);
         result = low16(operand1) - low16(imm);
-        x86_wrreg16(cpu, dest, low16(result));
+        x86_writeR16(cpu, dest, low16(result));
 
         if (signbit16(result))
             x86_setflag(cpu, SF);
@@ -1331,9 +1338,9 @@ static uint32_t x86__mm_rX_immX_sub(void *cpu, uint8_t dest, uint32_t imm, size_
         }
 
     } else {
-        operand1 = x86_rdreg32(cpu, dest);
+        operand1 = x86_readR32(cpu, dest);
         result = operand1 - imm;
-        x86_wrreg32(cpu, dest, result);
+        x86_writeR32(cpu, dest, result);
 
         if (signbit32(result))
             x86_setflag(cpu, SF);
@@ -1409,59 +1416,59 @@ uint32_t x86__mm_r32_imm32_sub(void *cpu, uint8_t dest, uint32_t imm)
 
 uint8_t x86__mm_r8_r8_sub(void *cpu, uint8_t dest, uint8_t src)
 {
-    return (uint8_t)x86__mm_rX_immX_sub(cpu, dest, x86_rdreg8(cpu, src), 8);
+    return (uint8_t)x86__mm_rX_immX_sub(cpu, dest, x86_readR8(cpu, src), 8);
 }
 
 uint8_t x86__mm_m8_r8_sub(void *cpu, moffset32_t vaddr, uint8_t src, _Bool lock)
 {
     if (lock)
-        return (uint8_t)x86__mm_mX_immX_locked_sub(cpu, vaddr, x86_rdreg8(cpu, src), 8);
-    return (uint8_t)x86__mm_mX_immX_sub(cpu, vaddr, x86_rdreg8(cpu, src), 8);
+        return (uint8_t)x86__mm_mX_immX_locked_sub(cpu, vaddr, x86_readR8(cpu, src), 8);
+    return (uint8_t)x86__mm_mX_immX_sub(cpu, vaddr, x86_readR8(cpu, src), 8);
 }
 
 uint8_t x86__mm_r8_m8_sub(void *cpu, uint8_t dest, moffset32_t vaddr, _Bool lock)
 {
     if (lock)
-        return (uint8_t)x86__mm_rX_immX_sub(cpu, dest, x86_atomic_rdmem8(cpu, vaddr), 8);
-    return (uint8_t)x86__mm_rX_immX_sub(cpu, vaddr, x86_rdmem8(cpu, vaddr), 8);
+        return (uint8_t)x86__mm_rX_immX_sub(cpu, dest, x86_atomic_readM8(cpu, vaddr), 8);
+    return (uint8_t)x86__mm_rX_immX_sub(cpu, vaddr, x86_readM8(cpu, vaddr), 8);
 }
 
 uint16_t x86__mm_r16_r16_sub(void *cpu, uint8_t dest, uint8_t src)
 {
-    return (u_int16_t)x86__mm_rX_immX_sub(cpu, dest, x86_rdreg16(cpu, src), 16);
+    return (u_int16_t)x86__mm_rX_immX_sub(cpu, dest, x86_readR16(cpu, src), 16);
 }
 
 uint16_t x86__mm_m16_r16_sub(void *cpu, moffset32_t vaddr, uint8_t src, _Bool lock)
 {
     if (lock)
-        return (uint16_t)x86__mm_mX_immX_locked_sub(cpu, vaddr, x86_rdreg16(cpu, src), 16);
-    return (uint16_t)x86__mm_mX_immX_sub(cpu, vaddr, x86_rdreg16(cpu, src), 16);
+        return (uint16_t)x86__mm_mX_immX_locked_sub(cpu, vaddr, x86_readR16(cpu, src), 16);
+    return (uint16_t)x86__mm_mX_immX_sub(cpu, vaddr, x86_readR16(cpu, src), 16);
 }
 
 uint16_t x86__mm_r16_m16_sub(void *cpu, uint8_t dest, moffset32_t vaddr, _Bool lock)
 {
     if (lock)
-        return (uint16_t)x86__mm_rX_immX_sub(cpu, dest, x86_atomic_rdmem16(cpu, vaddr), 16);
-    return (uint16_t)x86__mm_rX_immX_sub(cpu, vaddr, x86_rdmem16(cpu, vaddr), 16);
+        return (uint16_t)x86__mm_rX_immX_sub(cpu, dest, x86_atomic_readM16(cpu, vaddr), 16);
+    return (uint16_t)x86__mm_rX_immX_sub(cpu, vaddr, x86_readM16(cpu, vaddr), 16);
 }
 
 uint32_t x86__mm_r32_r32_sub(void *cpu, uint8_t dest, uint8_t src)
 {
-    return x86__mm_rX_immX_sub(cpu, dest, x86_rdreg32(cpu, src), 32);
+    return x86__mm_rX_immX_sub(cpu, dest, x86_readR32(cpu, src), 32);
 }
 
 uint32_t x86__mm_m32_r32_sub(void *cpu, moffset32_t vaddr, uint8_t src, _Bool lock)
 {
     if (lock)
-        return x86__mm_mX_immX_locked_sub(cpu, vaddr, x86_rdreg32(cpu, src), 32);
-    return x86__mm_mX_immX_sub(cpu, vaddr, x86_rdreg32(cpu, src), 32);
+        return x86__mm_mX_immX_locked_sub(cpu, vaddr, x86_readR32(cpu, src), 32);
+    return x86__mm_mX_immX_sub(cpu, vaddr, x86_readR32(cpu, src), 32);
 }
 
 uint32_t x86__mm_r32_m32_sub(void *cpu, uint8_t dest, moffset32_t vaddr, _Bool lock)
 {
     if (lock)
-        return x86__mm_rX_immX_sub(cpu, dest, x86_atomic_rdmem32(cpu, vaddr), 32);
-    return x86__mm_rX_immX_sub(cpu, vaddr, x86_rdmem32(cpu, vaddr), 32);
+        return x86__mm_rX_immX_sub(cpu, dest, x86_atomic_readM32(cpu, vaddr), 32);
+    return x86__mm_rX_immX_sub(cpu, vaddr, x86_readM32(cpu, vaddr), 32);
 }
 
 
@@ -1481,19 +1488,19 @@ static void x86__mm_rX_immX_test(void *cpu, uint8_t reg, uint32_t imm, int size)
     x86_clearflag(cpu, PF);
 
     if (size == 8) {
-        result = x86_rdreg8(cpu, reg) & sign8to32(lsb(imm));
+        result = x86_readR8(cpu, reg) & sign8to32(lsb(imm));
 
         if (signbit8(result))
             x86_setflag(cpu, SF);
 
     } else if (size == 16) {
-        result = x86_rdreg16(cpu, reg) & sign16to32(low16(imm));
+        result = x86_readR16(cpu, reg) & sign16to32(low16(imm));
 
         if (signbit16(result))
             x86_setflag(cpu, SF);
 
     } else {
-        result = x86_rdreg32(cpu, reg) & imm;
+        result = x86_readR32(cpu, reg) & imm;
 
         if (signbit32(result))
             x86_setflag(cpu, SF);
@@ -1517,19 +1524,19 @@ static void x86__mm_mX_immX_test(void *cpu, moffset32_t vaddr, uint32_t imm, int
     x86_clearflag(cpu, PF);
 
     if (size == 8) {
-        result = x86_rdmem8(cpu, vaddr) & sign8to32(lsb(imm));
+        result = x86_readM8(cpu, vaddr) & sign8to32(lsb(imm));
 
         if (signbit8(result))
             x86_setflag(cpu, SF);
 
     } else if (size == 16) {
-        result = x86_rdmem16(cpu, vaddr) & sign16to32(low16(imm));
+        result = x86_readM16(cpu, vaddr) & sign16to32(low16(imm));
 
         if (signbit16(result))
             x86_setflag(cpu, SF);
 
     } else {
-        result = x86_rdmem32(cpu, vaddr) & imm;
+        result = x86_readM32(cpu, vaddr) & imm;
 
         if (signbit32(result))
             x86_setflag(cpu, SF);
@@ -1591,30 +1598,30 @@ void x86__mm_m32_imm32_test(void *cpu, moffset32_t vaddr, uint32_t imm)
 
 void x86__mm_r8_r8_test(void *cpu, uint8_t dest, uint8_t reg2)
 {
-    x86__mm_rX_immX_test(cpu, dest, x86_rdreg8(cpu, reg2), 8);
+    x86__mm_rX_immX_test(cpu, dest, x86_readR8(cpu, reg2), 8);
 }
 
 void x86__mm_r16_r16_test(void *cpu, uint8_t dest, uint8_t reg2)
 {
-    x86__mm_rX_immX_test(cpu, dest, x86_rdreg16(cpu, reg2), 16);
+    x86__mm_rX_immX_test(cpu, dest, x86_readR16(cpu, reg2), 16);
 }
 
 void x86__mm_r32_r32_test(void *cpu, uint8_t dest, uint8_t reg2)
 {
-    x86__mm_rX_immX_test(cpu, dest, x86_rdreg32(cpu, reg2), 32);
+    x86__mm_rX_immX_test(cpu, dest, x86_readR32(cpu, reg2), 32);
 }
 
 void x86__mm_m8_r8_test(void *cpu, moffset32_t vaddr, uint8_t reg)
 {
-    x86__mm_mX_immX_test(cpu, vaddr, x86_rdreg8(cpu, reg), 8);
+    x86__mm_mX_immX_test(cpu, vaddr, x86_readR8(cpu, reg), 8);
 }
 
 void x86__mm_m16_r16_test(void *cpu, moffset32_t vaddr, uint8_t reg)
 {
-    x86__mm_mX_immX_test(cpu, vaddr, x86_rdreg16(cpu, reg), 16);
+    x86__mm_mX_immX_test(cpu, vaddr, x86_readR16(cpu, reg), 16);
 }
 
 void x86__mm_m32_r32_test(void *cpu, moffset32_t vaddr, uint8_t reg)
 {
-    x86__mm_mX_immX_test(cpu, vaddr, x86_rdreg32(cpu, reg), 16);
+    x86__mm_mX_immX_test(cpu, vaddr, x86_readR32(cpu, reg), 16);
 }

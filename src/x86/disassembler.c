@@ -26,26 +26,22 @@
 #include <string.h>
 #include <stdarg.h>
 
-#include "disassembler.h"
-#include "x86-utils.h"
-#include "cpu.h"
 #include "../memory.h"
 #include "../system.h"
 
+#include "disassembler.h"
+
+#include "x86-utils.h"
+
 static char *modrm2str(uint8_t, uint8_t, uint32_t, int);
-static char *strcatimm2(char *, const char *, const char *, uint32_t);
 
-static char *strcatimm2(char *dest, const char *beginning, const char *middle, uint32_t displacement)
-{
-    char *arg = NULL;
-
-    arg = int2hexstr(displacement, 0);
-    coolstrcat(dest, 3, beginning, middle, arg);
-    xfree(arg);
-
-
-    return dest;
-}
+static const char *conf_disassm_mnemonic_colorcode = "\033[38;5;148m";
+static const char *conf_disassm_operand_colorcode = "\033[38;5;81m";
+static const char *conf_disassm_number_colorcode = "\033[38;5;141m";
+static const char *conf_disassm_symbol_colorcode = "\033[38;5;141m";
+static const char *conf_disassm_code_address_colorcode = "\033[31m";
+static const char *conf_disassm_data_address_colorcode = "\033[35m";
+//static const char *conf_disassm_symbols_colorcode = "\033[95m";
 
 
 static char *modrm2str(uint8_t modrm, uint8_t sib, uint32_t imm, int oprnd_size)
@@ -56,43 +52,46 @@ static char *modrm2str(uint8_t modrm, uint8_t sib, uint32_t imm, int oprnd_size)
     uint8_t index = sibindex(sib);
     uint8_t base = sibbase(sib);
     char *regstr = NULL;
+    char *scaleregister = NULL;
     const char *scale = "";
-    _Bool is_ebp = 0;
     char *s = NULL;
+    char *temp = NULL;
 
     if (mod == 0) {
         if (rm != 0b100) {
             if (rm == 0b101) {
                 char *immediate = int2hexstr(imm, 0);
-                s = strcatall(3, "[", immediate, "]");
+                s = strcatall(4, "[", conf_disassm_number_colorcode, immediate, "\033[0m]");
                 xfree(immediate);
                 return s;
             }
 
-            return strcatall(3, "[", stringfyregister(rm, 32), "]");
+            return strcatall(4, "[", conf_disassm_operand_colorcode, stringfyregister(rm, 32), "\033[0m]");
         }
     } else if (mod == 1 || mod == 2) {
 
         if (rm != 0b100) {
             char *immediate = int2hexstr(imm, 0);
-            s = strcatall(4, "[", stringfyregister(rm, 32), immediate);
+            s = strcatall(7, "[", conf_disassm_operand_colorcode, stringfyregister(rm, 32), "\033[0m + ", conf_disassm_number_colorcode, immediate, "\033[0m]");
             xfree(immediate);
             return s;
         }
     } else {
             if (oprnd_size == 8)
-                return xstrdup(stringfyregister(reg32to8(rm), oprnd_size));
-        return xstrdup(stringfyregister(rm, oprnd_size));
+                return strcatall(3, conf_disassm_operand_colorcode, stringfyregister(reg32to8(rm), oprnd_size), "\033[0m");
+        return strcatall(3, conf_disassm_operand_colorcode, stringfyregister(rm, oprnd_size), "\033[0m");
     }
 
     switch (base) {
         case 0b101:
-            regstr = xcalloc(15, sizeof(*s)); // enough for EBP+0xdeadbeef
-            if (mod == 0)
-                regstr = int2hexstr(imm, 8);
-            else
-                regstr = xstrdup("EBP");
-            is_ebp = 1;
+            if (mod == 0) {
+                temp = int2hexstr(imm, 8);
+                regstr = strcatall(3, conf_disassm_number_colorcode, temp, "\033[0m");
+                xfree(temp);
+            } else {
+                regstr = xstrdup("ebp");
+            }
+
             break;
         case 0b000:
         case 0b001:
@@ -101,103 +100,123 @@ static char *modrm2str(uint8_t modrm, uint8_t sib, uint32_t imm, int oprnd_size)
         case 0b100:
         case 0b110:
         case 0b111:
-            regstr = (char *)stringfyregister(base, 32);
+            regstr = xstrdup(stringfyregister(base, 32));
+            break;
     }
 
-    if (ss_factor == 0b00) {
-        switch (index) {
-            case 0b000: scale = "EAX+"; break;
-            case 0b001: scale = "ECX+"; break;
-            case 0b010: scale = "EDX+"; break;
-            case 0b011: scale = "EBX+"; break;
-            case 0b100: scale = ""; break;
-            case 0b101: scale = "EBP+"; break;
-            case 0b110: scale = "ESI+"; break;
-            case 0b111: scale = "EDI+"; break;
-        }
-    } else if (ss_factor == 0b01) {
-        switch (index) {
-            case 0b000: scale = "EAX*2+"; break;
-            case 0b001: scale = "ECX*2+"; break;
-            case 0b010: scale = "EDX*2+"; break;
-            case 0b011: scale = "EBX*2+"; break;
-            case 0b100: scale = ""; break;
-            case 0b101: scale = "EBP*2+"; break;
-            case 0b110: scale = "ESI*2+"; break;
-            case 0b111: scale = "EDI*2+"; break;
-        }
-    } else if (ss_factor == 0b10) {
-        switch (index) {
-            case 0b000: scale = "EAX*4+"; break;
-            case 0b001: scale = "ECX*4+"; break;
-            case 0b010: scale = "EDX*4+"; break;
-            case 0b011: scale = "EBX*4+"; break;
-            case 0b100: scale = ""; break;
-            case 0b101: scale = "EBP*4+"; break;
-            case 0b110: scale = "ESI*4+"; break;
-            case 0b111: scale = "EDI*4+"; break;
-        }
-    } else if (ss_factor == 0b10) {
-        switch (index) {
-            case 0b000: scale = "EAX*8+"; break;
-            case 0b001: scale = "ECX*8+"; break;
-            case 0b010: scale = "EDX*8+"; break;
-            case 0b011: scale = "EBX*8+"; break;
-            case 0b100: scale = ""; break;
-            case 0b101: scale = "EBP*8+"; break;
-            case 0b110: scale = "ESI*8+"; break;
-            case 0b111: scale = "EDI*8+"; break;
-        }
+    switch (index) {
+        case 0b000: scaleregister = "eax"; break;
+        case 0b001: scaleregister = "ecx"; break;
+        case 0b010: scaleregister = "edx"; break;
+        case 0b011: scaleregister = "ebx"; break;
+        case 0b100: scaleregister = ""; break;
+        case 0b101: scaleregister = "ebp"; break;
+        case 0b110: scaleregister = "esi"; break;
+        case 0b111: scaleregister = "edi"; break;
     }
+
+    if (ss_factor == 0b00)
+        scale = "";
+    else if (ss_factor == 0b01)
+        scale = "2";
+    else if (ss_factor == 0b10)
+        scale = "4";
+    else if (ss_factor == 0b10)
+        scale = "8";
 
     if (mod == 1 || mod == 2) {
         char *displacement = int2hexstr(imm, 0);
 
-        s = strcatall(6, "[", scale, regstr, "+", displacement, "]");
+        if (index != 0b100)
+            s = strcatall(13, "[", conf_disassm_operand_colorcode, scaleregister, "\033[0m*", conf_disassm_number_colorcode, scale, "\033[0m + ", conf_disassm_operand_colorcode,  regstr, "\033[0m + ", conf_disassm_number_colorcode, displacement, "\033[0m]");
+        else
+            s = strcatall(7, "[", conf_disassm_operand_colorcode,  regstr, "\033[0m + ", conf_disassm_number_colorcode, displacement, "\033[0m]");
         xfree(displacement);
     } else {
-        s = strcatall(4, "[", scale, regstr, "]");
+        s = strcatall(10, "[", conf_disassm_operand_colorcode, scaleregister, "\033[0m*", conf_disassm_number_colorcode, scale, "\033[0m + ", conf_disassm_operand_colorcode,  regstr, "\033[0m]");
     }
 
-    if (is_ebp)
-        xfree(regstr);
+    xfree(regstr);
 
     return s;
 }
 
-char *x86_disassemble(struct instruction instr)
+char *x86_disassemble(x86CPU *cpu, struct instruction ins)
 {
-    char *s = NULL;
-    size_t s_size = 35;
-    size_t index = 0;
+    char *mnemonic = NULL;
     char *arg = NULL;
+    char *immediate = NULL;
+    char *temp = NULL;
+    char *s = NULL;
+    uint8_t mnemonic_spacing = 7;
+    size_t mnemonic_size;
 
-    if (instr.encoding == no_encoding)
+    if (ins.encoding == no_encoding)
         return NULL;
 
-    s = xcalloc(s_size, sizeof(*s));
+    mnemonic_size = strlen(ins.name);
+    if (mnemonic_size >= mnemonic_spacing)
+        mnemonic_spacing = mnemonic_size + 1;
 
-    for (size_t i = 0; i < strlen(instr.name); i++)
-        s[index++] = tolower(instr.name[i]);
+    mnemonic = xcalloc(mnemonic_size + 1, sizeof(*s));
 
-    s[index++] = ' ';
+    for (size_t i = 0; i < mnemonic_spacing; i++) {
+        if (i < mnemonic_size)
+            mnemonic[i] = tolower(ins.name[i]);
+        else
+            mnemonic[i] = ' ';
+    }
 
-    switch (instr.encoding) {
+    temp = mnemonic;
+    mnemonic = strcatall(3, conf_disassm_mnemonic_colorcode, mnemonic, "\033[0m");
+    xfree(temp);
+    temp = NULL;
+
+        if (ins.handler == x86_mm_call || ins.handler == x86_mm_jcc) {
+            moffset32_t branchaddress = x86_findbranchtarget_relative(cpu, ins.eip, ins.data);
+            struct symbol_lookup_record lookup = sr_lookup(x86_resolver(cpu), branchaddress);
+            char *rel = NULL;
+            char *target = int2hexstr(branchaddress, 8);
+
+            if (lookup.sl_name) {
+                if (lookup.sl_start != branchaddress) {
+                    rel = int2str(branchaddress - lookup.sl_start);
+                    s = strcatall(9, mnemonic, conf_disassm_symbol_colorcode, lookup.sl_name, "+", rel, "\033[0m <", conf_disassm_code_address_colorcode, target, "\033[0m>");
+                } else {
+                    s = strcatall(7, mnemonic, conf_disassm_symbol_colorcode, lookup.sl_name, "\033[0m <", conf_disassm_code_address_colorcode, target, "\033[0m>");
+                }
+
+                xfree(rel);
+                xfree(target);
+                return s;
+            }
+        }
+
+
+    switch (ins.encoding) {
         case rm32_imm32:
         case rm32_imm8:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 32);
-            strcatimm2(s, arg, ", ", instr.data.imm1);
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 32);
+            if (x86_ptrtype(cpu, ins.data.imm1) == DATA_PTR) {
+                struct symbol_lookup_record lookup = sr_lookup(x86_resolver(cpu), ins.data.imm1);
+                if (lookup.sl_name) {
+                    temp = int2hexstr(ins.data.imm1, 0);
+                    immediate = strcatall(6, conf_disassm_symbol_colorcode, lookup.sl_name, "\033[0m <", conf_disassm_data_address_colorcode, temp, "\033[0m>");
+                }
+            } else {
+                immediate = int2hexstr(ins.data.imm1, 0);
+            }
+            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
             break;
         case rm8_imm8:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 8);
-            strcatimm2(s, arg, ", ", instr.data.imm1);
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 8);
+            immediate = int2hexstr(ins.data.imm1, 0);
+            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
             break;
         case rm16_imm8:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
-            strcatimm2(s, arg, ", ", instr.data.imm1);
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
+            immediate = int2hexstr(ins.data.imm1, 0);
+            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
             break;
         case rela8:
         case imm8:
@@ -205,207 +224,200 @@ char *x86_disassemble(struct instruction instr)
         case rela16:
         case rela32:
         case imm32:
-            arg = int2hexstr(instr.data.imm1, 0);
-            strcat(s, arg);
-            xfree(arg);
+            if (x86_ptrtype(cpu, ins.data.imm1) == DATA_PTR) {
+                struct symbol_lookup_record lookup = sr_lookup(x86_resolver(cpu), ins.data.imm1);
+                if (lookup.sl_name) {
+                    temp = int2hexstr(ins.data.imm1, 0);
+                    immediate = strcatall(6, conf_disassm_symbol_colorcode, lookup.sl_name, "\033[0m <", conf_disassm_data_address_colorcode, arg, "\033[0m>");
+                }
+            } else {
+                immediate = int2hexstr(ins.data.imm1, 0);
+            }
+            s = strcatall(4, mnemonic, conf_disassm_number_colorcode, immediate, "\033[0m");
             break;
         case imm8_AL:
-            arg = int2hexstr(instr.data.imm1, 0);
-            coolstrcat(s, 3, arg, ", ", "AL");
-            xfree(arg);
+            immediate = int2hexstr(ins.data.imm1, 0);
+            s = strcatall(7, mnemonic, conf_disassm_number_colorcode,  immediate, ", ", conf_disassm_operand_colorcode, "al", "\033[0m");
             break;
         case imm8_AX:
-            arg = int2hexstr(instr.data.imm1, 0);
-            coolstrcat(s, 3, arg, ", ", "AX");
-            xfree(arg);
+            immediate = int2hexstr(ins.data.imm1, 0);
+            s = strcatall(7, mnemonic, conf_disassm_number_colorcode, immediate, ", ", conf_disassm_operand_colorcode, "ax", "\033[0m");
             break;
         case imm32_eAX:
         case imm8_eAX:
-            arg = int2hexstr(instr.data.imm1, 0);
-            coolstrcat(s, 3, arg, ", ", "EAX");
-            xfree(arg);
+            immediate = int2hexstr(ins.data.imm1, 0);
+            s = strcatall(7, mnemonic, conf_disassm_number_colorcode, immediate, ", ", conf_disassm_operand_colorcode, "eax", "\033[0m");
             break;
         case AL_imm8:
-            arg = int2hexstr(instr.data.imm1, 0);
-            coolstrcat(s, 3, "AL", ", ", arg);
-            xfree(arg);
+            immediate = int2hexstr(ins.data.imm1, 0);
+            s = strcatall(7, mnemonic, conf_disassm_operand_colorcode, "al\033[0m", ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
             break;
         case AX_imm16:
         case AX_imm8:
-            arg = int2hexstr(instr.data.imm1, 0);
-            coolstrcat(s, 3, "AX", ", ", arg);
-            xfree(arg);
+            immediate = int2hexstr(ins.data.imm1, 0);
+            s = strcatall(7, mnemonic, conf_disassm_operand_colorcode, "ax\033[0m", ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
             break;
         case eAX_imm32:
         case eAX_imm8:
-            arg = int2hexstr(instr.data.imm1, 0);
-            coolstrcat(s, 3, "EAX", ", ", arg);
-            xfree(arg);
+            if (x86_ptrtype(cpu, ins.data.imm1) == DATA_PTR) {
+                struct symbol_lookup_record lookup = sr_lookup(x86_resolver(cpu), ins.data.imm1);
+                if (lookup.sl_name) {
+                    temp = int2hexstr(ins.data.imm1, 0);
+                    immediate = strcatall(6, conf_disassm_symbol_colorcode, lookup.sl_name, "\033[0m <", conf_disassm_data_address_colorcode, arg, "\033[0m>");
+                }
+            } else {
+                immediate = int2hexstr(ins.data.imm1, 0);
+            }
+            s = strcatall(8, mnemonic, conf_disassm_operand_colorcode, "eax", "\033[0m", ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
             break;
         case mm1_imm8:
-            arg = int2hexstr(instr.data.imm1, 0);
-            coolstrcat(s, 3, "mm1", ", ", arg);
-            xfree(arg);
+            immediate = int2hexstr(ins.data.imm1, 0);
+            s = strcatall(8, mnemonic, conf_disassm_operand_colorcode, "mm1", "\033[0m", ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
             break;
         case xmm1_imm8:
-            arg = int2hexstr(instr.data.imm1, 0);
-            coolstrcat(s, 3, "xmm1", ", ", arg);
-            xfree(arg);
+            immediate = int2hexstr(ins.data.imm1, 0);
+            s = strcatall(8, mnemonic, conf_disassm_operand_colorcode, "xmm1", "\033[0m", ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
             break;
         case rm16_imm16:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
-            strcatimm2(s, arg, ", ", instr.data.imm1);
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
+            immediate = int2hexstr(ins.data.imm1, 0);
+            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
             break;
         case imm16_imm8:
-            arg = int2hexstr(instr.data.imm1, 0);
-            strcatimm2(s, arg, ", ", instr.data.imm2);
-            xfree(arg);
+            arg = int2hexstr(ins.data.imm1, 0);
+            immediate = int2hexstr(ins.data.imm2, 0);
+            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
             break;
         case rm8:
         case m8:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 8);
-            strcat(s, arg);
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 8);
+            s = strcatall(2, mnemonic, arg);
             break;
         case rm16:
         case m16:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
-            strcat(s, arg);
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
+            s = strcatall(2, mnemonic, arg);
             break;
         case rm32:
         case m32:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 32);
-            strcat(s, arg);
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 32);
+            s = strcatall(2, mnemonic, arg);
             break;
         case rm8_1:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 8);
-            coolstrcat(s, 3, arg, ", ", "1");
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 8);
+            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_number_colorcode, "1", "\033[0m");
             break;
         case rm8_CL:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 8);
-            coolstrcat(s, 3, arg, ", ", "CL");
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 8);
+            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_operand_colorcode, "CL", "\033[0m");
             break;
         case rm8_r8:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 8);
-            coolstrcat(s, 3, arg, ", ", stringfyregister(reg32to8(instr.data.modrm), 8));
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 8);
+            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_operand_colorcode, stringfyregister(reg32to8(ins.data.modrm), 8), "\033[0m");
             break;
         case rm16_1:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
-            coolstrcat(s, 3, arg, ", ", "1");
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
+            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_number_colorcode, "1", "\033[0m");
             break;
         case rm16_CL:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
-            coolstrcat(s, 3, arg, ", ", "CL");
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
+            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_operand_colorcode, "CL", "\033[0m");
             break;
         case rm16_r16:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
-            coolstrcat(s, 3, arg, ", ", stringfyregister(reg(instr.data.modrm), 16));
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
+            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 16), "\033[0m");
             break;
         case rm16_r16_CL:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
-            coolstrcat(s, 5, arg, ", ", stringfyregister(reg(instr.data.modrm), 16), ", ", "CL");
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
+            s = strcatall(8, mnemonic, arg, ", ", conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 16), "\033[0m, ", conf_disassm_operand_colorcode, "CL\033[0m");
             break;
         case rm32_1:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 32);
-            coolstrcat(s, 3, arg, ", ", "1");
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 32);
+            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_number_colorcode, "1", "\033[0m");
             break;
         case rm32_CL:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 32);
-            coolstrcat(s, 3, arg, ", ", "CL");
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 32);
+            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_operand_colorcode, "CL", "\033[0m");
             break;
         case m32_r32:
         case rm32_r32:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 32);
-            coolstrcat(s, 3, arg, ", ", stringfyregister(reg(instr.data.modrm), 32));
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 32);
+            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 32), "\033[0m");
             break;
         case rm32_r32_CL:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 32);
-            coolstrcat(s, 5, arg, ", ", stringfyregister(reg(instr.data.modrm), 32), ", ", "CL");
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 32);
+            s = strcatall(7, mnemonic, arg, ", ", conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 32), "\033[0m", ", ", conf_disassm_operand_colorcode, "CL\033[0m");
             break;
         case r8_rm8:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 8);
-            coolstrcat(s, 3, stringfyregister(reg(instr.data.modrm), 8), ", ", arg);
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 8);
+            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 8), "\033[0m, ", arg);
             break;
         case r16_rm8:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 8);
-            coolstrcat(s, 3, stringfyregister(reg(instr.data.modrm), 16), ", ", arg);
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 8);
+            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 16), "\033[0m, ", arg);
             break;
         case r16_m16:
         case r16_rm16:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
-            coolstrcat(s, 3, stringfyregister(reg(instr.data.modrm), 16), ", ", arg);
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
+            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 16), "\033[0m, ", arg);
             break;
         case r32_m32:
         case r32_rm32:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 32);
-            coolstrcat(s, 3, stringfyregister(reg(instr.data.modrm), 32), ", ", arg);
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 32);
+            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 32), "\033[0m, ", arg);
             break;
         case r32_rm8:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 8);
-            coolstrcat(s, 3, stringfyregister(reg(instr.data.modrm), 32), ", ", arg);
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 8);
+            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 32), "\033[0m, ", arg);
             break;
         case r32_rm16:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
-            coolstrcat(s, 3, stringfyregister(reg(instr.data.modrm), 32), ", ", arg);
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
+            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 32), "\033[0m, ", arg);
             break;
         case AX_r16:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 16);
-            coolstrcat(s, 3, "AX", ", ", arg);
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
+            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, stringfyregister(AX, 16), "\033[0m, ", arg);
             break;
         case eAX_r32:
-            arg = modrm2str(instr.data.modrm, instr.data.sib, instr.data.moffset, 32);
-            coolstrcat(s, 3, "EAX", ", ", arg);
-            xfree(arg);
+            arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 32);
+            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, stringfyregister(EAX, 32), "\033[0m, ", arg);
             break;
         case mm1_mm2:
-            coolstrcat(s, 3, "mm1", ", ", "mm2");
+            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, "mm1\033[0m, ", conf_disassm_operand_colorcode, "mm2\033[0m");
             break;
         case xmm1_xmm2:
-            coolstrcat(s, 3, "xmm1", ", ", "xmm2");
+            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, "xmm1\033[0m, ", conf_disassm_operand_colorcode, "xmm2\033[0m");
             break;
         case r16:
-            strcat(s, stringfyregister(instr.data.opc & EDI, 16));
+            s = strcatall(4, mnemonic, conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 16), "\033[0m");
             break;
         case r32:
-            strcat(s, stringfyregister(instr.data.opc & EDI, 32));
+            s = strcatall(4, mnemonic, conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 32), "\033[0m");
+            break;
+        default:
+            s = xstrdup(mnemonic);
             break;
     }
+
+    xfree(mnemonic);
+
+    xfree(temp);
+    xfree(arg);
 
     return s;
 }
 
 
-#define decode_fail(instr, byte)  \
+#define decode_fail(ins, byte)  \
     do {    \
-        (instr).fail_to_fetch = 1;    \
-        (instr).fail_byte = (byte);    \
-        return (instr); \
+        (ins).fail_to_fetch = 1;    \
+        (ins).fail_byte = (byte);    \
+        return (ins); \
     } while (0)
 
-struct instruction x86_decode(x86MMU *mmu, moffset32_t eip)
+struct instruction x86_decode(x86CPU *cpu, moffset32_t eip)
 {
-    struct instruction instr;
+    struct instruction ins;
     uint8_t byte;
     int encoding;
     struct opcode *table = x86_opcode_table;
@@ -414,8 +426,8 @@ struct instruction x86_decode(x86MMU *mmu, moffset32_t eip)
     uint8_t last_prefix = 0;
     moffset32_t old_eip = eip;
 
-    if (!mmu)
-        decode_fail(instr, 0);
+    if (!cpu)
+        decode_fail(ins, 0);
 
     data.ext = 0;
     data.sec = 0;
@@ -431,13 +443,11 @@ struct instruction x86_decode(x86MMU *mmu, moffset32_t eip)
     data.rep = 0;
     data.segovr = 0;
 
-    instr.fail_to_fetch = 0;
-    instr.fail_byte = 0;
+    ins.fail_to_fetch = 0;
+    ins.fail_byte = 0;
 
     for (size_t isprefix = 1; isprefix != 0;) {
-        byte = mmu_fetch(mmu, eip);
-        if (mmu_error(mmu))
-            decode_fail(instr, byte);
+        byte = x86_readM8(cpu, eip);
         eip += 1;
         if (x86_byteispfx(byte)) {
 
@@ -455,9 +465,7 @@ struct instruction x86_decode(x86MMU *mmu, moffset32_t eip)
                 data.segovr = byte2segovr(byte);
 
             last_prefix = byte;
-            byte = mmu_fetch(mmu, eip);
-            if (mmu_error(mmu))
-                decode_fail(instr, byte);
+            byte = x86_readM8(cpu, eip);
 
             eip += 1;
             if (x86_byteispfx(byte))
@@ -470,9 +478,7 @@ struct instruction x86_decode(x86MMU *mmu, moffset32_t eip)
     if (byte == 0x0F) {
         table = x86_opcode_0f_table;
 
-        byte = mmu_fetch(mmu, eip);
-        if (mmu_error(mmu))
-            decode_fail(instr, byte);
+        byte = x86_readM8(cpu, eip);
         eip += 1;
 
     }
@@ -482,9 +488,7 @@ struct instruction x86_decode(x86MMU *mmu, moffset32_t eip)
 
     // handle instructions with secondary bytes (see AAM/AAD)
     if (op.o_sec_table) {
-        byte = mmu_fetch(mmu, eip);
-        if (mmu_error(mmu))
-            decode_fail(instr, byte);
+        byte = x86_readM8(cpu, eip);
 
         for (size_t i = 0; i < op.o_sec_tablesz; i++) {
             if (op.o_sec_table[i].o_opcode == byte) {
@@ -498,9 +502,7 @@ struct instruction x86_decode(x86MMU *mmu, moffset32_t eip)
 
     // handle Mod/RM, SIB and opcode extensions
     if (op.o_use_rm) {
-        data.modrm = mmu_fetch(mmu, eip);
-        if (mmu_error(mmu))
-            decode_fail(instr, byte);
+        data.modrm = x86_readM8(cpu, eip);
         eip += 1;
 
         if (op.o_use_op_extension) {
@@ -513,9 +515,7 @@ struct instruction x86_decode(x86MMU *mmu, moffset32_t eip)
             case 1: // MOD 01 RM 100
             case 2: // MOD 10 RM 100
                 if (rm(data.modrm) == 4) {
-                    data.sib = mmu_fetch(mmu, eip);
-                    if (mmu_error(mmu))
-                        decode_fail(instr, byte);
+                    data.sib = x86_readM32(cpu, eip);
                     eip += 1;
                 }
                 break;
@@ -535,9 +535,7 @@ struct instruction x86_decode(x86MMU *mmu, moffset32_t eip)
         }
 
         if (op.o_sec_table) {
-            byte = mmu_fetch(mmu, eip);
-            if (mmu_error(mmu))
-                decode_fail(instr, byte);
+            byte = x86_readM32(cpu, eip);
 
             for (size_t i = 0; i < op.o_sec_tablesz; i++) {
                 if (op.o_sec_table[i].o_opcode == byte) {
@@ -584,43 +582,14 @@ struct instruction x86_decode(x86MMU *mmu, moffset32_t eip)
                 dispsz = displacement32(data.modrm);
 
             if (dispsz == 8) {
-                data.moffset = mmu_fetch(mmu, eip);
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
+                data.moffset = x86_readM8(cpu, eip);
                 eip += 1;
             } else if (dispsz == 16) {
-                data.moffset = mmu_fetch(mmu, eip);
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
-                eip += 1;
-                data.moffset |= mmu_fetch(mmu, eip) << 8;
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
-                eip += 1;
+                data.moffset = x86_readM16(cpu, eip);
+                eip += 2;
             } else if (dispsz == 32) {
-                data.moffset = mmu_fetch(mmu, eip);
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
-                eip += 1;
-                data.moffset |= mmu_fetch(mmu, eip) << 8;
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
-                eip += 1;
-                data.moffset |= mmu_fetch(mmu, eip) << 16;
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
-                eip += 1;
-                data.moffset |= mmu_fetch(mmu, eip) << 24;
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
-                eip += 1;
+                data.moffset = x86_readM32(cpu, eip);
+                eip += 4;
             }
             // FALL THROUGH
         case imm8:
@@ -636,9 +605,7 @@ struct instruction x86_decode(x86MMU *mmu, moffset32_t eip)
         case r32_xmm_imm8:
         case rela8:
         case xmm1_imm8:
-            data.imm1 = mmu_fetch(mmu, eip);
-            if (mmu_error(mmu))
-                decode_fail(instr, byte);
+            data.imm1 = x86_readM8(cpu, eip);
             eip += 1;
             break;
         case rm16_imm16:
@@ -646,70 +613,30 @@ struct instruction x86_decode(x86MMU *mmu, moffset32_t eip)
             dispsz = displacement16(data.modrm);
 
             if (dispsz == 8) {
-                data.moffset = mmu_fetch(mmu, eip);
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
+                data.moffset = x86_readM8(cpu, eip);
                 eip += 1;
             } else if (dispsz == 16) {
-                data.moffset = mmu_fetch(mmu, eip);
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
-                eip += 1;
-                data.moffset |= mmu_fetch(mmu, eip) << 8;
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
-                eip += 1;
+                data.moffset = x86_readM16(cpu, eip);
+                eip += 2;
             }
             // FALL THROUGH
         case imm16:
         case imm16_AX:
         case AX_imm16:
         case rela16:
-            data.imm1 = mmu_fetch(mmu, eip);
-            if (mmu_error(mmu))
-                decode_fail(instr, byte);
-
-            eip += 1;
-            data.imm1 |= mmu_fetch(mmu, eip) << 8;
-            if (mmu_error(mmu))
-                decode_fail(instr, byte);
-
-            eip += 1;
+            data.imm1 = x86_readM16(cpu, eip);
+            eip += 2;
             break;
         case rm32_imm32:
         case r32_rm32_imm32:
             dispsz = displacement32(data.modrm);
 
             if (dispsz == 8) {
-                data.moffset = mmu_fetch(mmu, eip);
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
+                data.moffset = x86_readM8(cpu, eip);
                 eip += 1;
             } else if (dispsz == 32) {
-                data.moffset = mmu_fetch(mmu, eip);
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
-                eip += 1;
-                data.moffset |= mmu_fetch(mmu, eip) << 8;
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
-                eip += 1;
-                data.moffset |= mmu_fetch(mmu, eip) << 16;
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
-                eip += 1;
-                data.moffset |= mmu_fetch(mmu, eip) << 24;
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
-                eip += 1;
+                data.moffset = x86_readM32(cpu, eip);
+                eip += 4;
             }
         // FALL THROUGH
         case rela16_16:
@@ -718,88 +645,32 @@ struct instruction x86_decode(x86MMU *mmu, moffset32_t eip)
         case rela32:
         case imm32:
         case imm32_eAX:
-            data.imm1 = mmu_fetch(mmu, eip);
-            if (mmu_error(mmu))
-                decode_fail(instr, byte);
-
-            eip += 1;
-            data.imm1 |= mmu_fetch(mmu, eip) << 8;
-            if (mmu_error(mmu))
-                decode_fail(instr, byte);
-
-            eip += 1;
-            data.imm1 |= mmu_fetch(mmu, eip) << 16;
-            if (mmu_error(mmu))
-                decode_fail(instr, byte);
-
-            eip += 1;
-            data.imm1 |= mmu_fetch(mmu, eip) << 24;
-            if (mmu_error(mmu))
-                decode_fail(instr, byte);
-
-            eip += 1;
+            data.imm1 = x86_readM32(cpu, eip);
+            eip += 4;
             break;
         case rela16_32:
         case ptr16_32:
             // first 16 bytes
-            data.imm1 = mmu_fetch(mmu, eip);
-            if (mmu_error(mmu))
-                decode_fail(instr, byte);
-
-            eip += 1;
-            data.imm1 |= mmu_fetch(mmu, eip) << 8;
-            if (mmu_error(mmu))
-                decode_fail(instr, byte);
-
-            eip += 1;
+            data.imm1 = x86_readM16(cpu, eip);
+            eip += 2;
 
             // last four bytes
-            data.imm2 = mmu_fetch(mmu, eip);
-            if (mmu_error(mmu))
-                decode_fail(instr, byte);
-
-            eip += 1;
-            data.imm2 |= mmu_fetch(mmu, eip) << 8;
-            if (mmu_error(mmu))
-                decode_fail(instr, byte);
-
-            eip += 1;
-            data.imm2 |= mmu_fetch(mmu, eip) << 16;
-            if (mmu_error(mmu))
-                decode_fail(instr, byte);
-
-            eip += 1;
-            data.imm2 |= mmu_fetch(mmu, eip) << 24;
-            if (mmu_error(mmu))
-                decode_fail(instr, byte);
-
-            eip += 1;
+            data.imm2 = x86_readM32(cpu, eip);
+            eip += 4;
             break;
         case imm16_imm8:
             // fist two bytes
-            data.imm1 = mmu_fetch(mmu, eip);
-            if (mmu_error(mmu))
-                decode_fail(instr, byte);
-
-            eip += 1;
-            data.imm1 |= mmu_fetch(mmu, eip) << 8;
-            if (mmu_error(mmu))
-                decode_fail(instr, byte);
-
-            eip += 1;
+            data.imm1 = x86_readM16(cpu, eip);
+            eip += 2;
 
             // last byte
-            data.imm2 = mmu_fetch(mmu, eip);
-            if (mmu_error(mmu))
-                decode_fail(instr, byte);
+            data.imm2 = x86_readM8(cpu, eip);
             eip += 1;
             break;
         case bnd_sib:
         case sib_bnd:
             if (!data.sib) {
-                data.sib = mmu_fetch(mmu, eip);
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
+                data.sib = x86_readM8(cpu, eip);
                 eip += 1;
             }
             break;
@@ -876,43 +747,14 @@ struct instruction x86_decode(x86MMU *mmu, moffset32_t eip)
                 dispsz = displacement32(data.modrm);
 
             if (dispsz == 8) {
-                data.moffset = mmu_fetch(mmu, eip);
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
+                data.moffset = x86_readM8(cpu, eip);
                 eip += 1;
             } else if (dispsz == 16) {
-                data.moffset = mmu_fetch(mmu, eip);
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
-                eip += 1;
-                data.moffset |= mmu_fetch(mmu, eip) << 8;
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
-                eip += 1;
+                data.moffset = x86_readM16(cpu, eip);
+                eip += 2;
             } else if (dispsz == 32) {
-                data.moffset = mmu_fetch(mmu, eip);
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
-                eip += 1;
-                data.moffset |= mmu_fetch(mmu, eip) << 8;
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
-                eip += 1;
-                data.moffset |= mmu_fetch(mmu, eip) << 16;
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
-                eip += 1;
-                data.moffset |= mmu_fetch(mmu, eip) << 24;
-                if (mmu_error(mmu))
-                    decode_fail(instr, byte);
-
-                eip += 1;
+                data.moffset = x86_readM32(cpu, eip);
+                eip += 4;
             }
             break;
         case AX_r16:
@@ -930,49 +772,26 @@ struct instruction x86_decode(x86MMU *mmu, moffset32_t eip)
             break;
         case no_encoding:
         default:
-            decode_fail(instr, byte);
-            return instr;
+            decode_fail(ins, byte);
+            return ins;
     }
 
-    instr.name = op.o_name;
-    instr.handler = op.o_handler;
-    instr.data = data;
-    instr.size = eip - old_eip;
-    instr.encoding = encoding;
-    return instr;
+    ins.name = op.o_name;
+    ins.handler = op.o_handler;
+    ins.data = data;
+    ins.size = eip - old_eip;
+    ins.encoding = encoding;
+    ins.data.bytes = ins.size;
+    ins.eip = old_eip;
+    return ins;
 }
 
-moffset32_t x86_decodeuntil(x86MMU *mmu, moffset32_t eip, moffset32_t stop_eip)
+moffset32_t x86_findbranchtarget_relative(x86CPU * cpu, moffset32_t eip, struct exec_data data)
 {
-    struct instruction instr;
-    moffset32_t addr = 0;
-
-    if (!mmu || stop_eip < eip)
-        return 0;
-
-    while (1) {
-        instr = x86_decode(mmu, eip);
-
-        if (instr.fail_to_fetch) {
-            mmu_clrerror(mmu);
-            break;
-        }
-
-        if (eip + instr.size >= stop_eip) {
-            addr = eip;
-            break;
-        }
-
-        eip += instr.size;
-    }
-
-    return addr;
-}
-
-moffset32_t x86_findbranchtarget(void *cpu, struct exec_data data)
-{
-    ASSERT(cpu != NULL);
     moffset32_t effctvaddr;
+
+    if (!cpu)
+        return 0;
 
     if (data.oprsz_pfx)
         effctvaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
@@ -997,8 +816,7 @@ moffset32_t x86_findbranchtarget(void *cpu, struct exec_data data)
         case 0x70:  // JO rel8
         case 0x7A:  // JPE rel8
         case 0x78:  // JS rel8
-            return x86_rdreg32(cpu, EIP) + lsb(data.imm1);
-            break;
+            return eip + data.bytes + lsb(data.imm1);
         case 0x80:  // JO rel32     rel16
         case 0x81:  // JNO rel32     rel16
         case 0x82:  // JB rel32     rel16
@@ -1016,39 +834,40 @@ moffset32_t x86_findbranchtarget(void *cpu, struct exec_data data)
         case 0x8E:  // JLE rel32     rel16
         case 0x8F:  // JG rel32     rel16
             if (data.oprsz_pfx)
-                return x86_rdreg16(cpu, EIP) + low16(data.imm1);
+                return moffset16(eip) + data.bytes + low16(data.imm1);
             else
-                return x86_rdreg32(cpu, EIP) + data.imm1;
-            break;
+                return eip + data.bytes + data.imm1;
         case 0xE8:  // CALL rel32   CALL rel16
-            return x86_rdreg32(cpu, EIP) + data.imm1;
+            return eip + data.bytes + data.imm1;
         case 0xFF:
             if (data.ext == 2) {    // FF /2 CALL r/m32 CALL r/m16
                 if (effctvaddr) {
                     if (data.oprsz_pfx)
-                        return x86_rdmem16(cpu, effctvaddr);
+                        return x86_readM16(cpu, effctvaddr);
                     else
-                        return x86_rdmem32(cpu, effctvaddr);
+                        return x86_readM32(cpu, effctvaddr);
                 } else {
                     if (data.oprsz_pfx)
-                        return x86_rdreg16(cpu, effctvregister(data.modrm, 16));
+                        return x86_readR16(cpu, effctvregister(data.modrm, 16));
                     else
-                        return x86_rdreg32(cpu, effctvregister(data.modrm, 32));
+                        return x86_readR32(cpu, effctvregister(data.modrm, 32));
                 }
             } else {    // FF /3 CALL m16:32  CALL m16:16
                 if (data.oprsz_pfx)
-                    return x86_rdmem16(cpu, effctvaddr + 2) + x86_rdmem16(cpu, effctvaddr);
+                    return x86_readM16(cpu, effctvaddr + 2) + x86_readM16(cpu, effctvaddr);
                 else
-                    return x86_rdmem16(cpu, effctvaddr + 4) + x86_rdmem32(cpu, effctvaddr);
+                    return x86_readM16(cpu, effctvaddr + 4) + x86_readM32(cpu, effctvaddr);
             }
             break;
         case 0x9A:
-            if (data.oprsz_pfx)
-                return high16(data.imm1) + low16(data.imm1);
-            else
-                return low16(data.imm1) + data.imm2;
+            ASSERT_NOTREACHED();
             break;
     }
 
     return 0;
+}
+
+moffset32_t x86_findbranchtarget(x86CPU *cpu, struct exec_data data)
+{
+    return x86_findbranchtarget_relative(cpu, x86_readR32(cpu, EIP), data);
 }

@@ -46,7 +46,7 @@ enum x86MMUMmapFlags {
 enum x86MMUQueries {
     SD_LIMIT,
     SD_BASE,
-    SD_PROT
+    SD_TYPE
 };
 
 uint64_t mmu_query(const x86MMU *, moffset32_t, int);
@@ -147,7 +147,7 @@ uint64_t mmu_query(const x86MMU *mmu, moffset32_t virtaddr, int query)
     switch (query) {
         case SD_LIMIT: return segment->s_limit;
         case SD_BASE:  return segment->s_start;
-        case SD_PROT:  return segment->s_prot;
+        case SD_TYPE:  return segment->s_type;
         default: return 0;
     }
 }
@@ -155,17 +155,20 @@ uint64_t mmu_query(const x86MMU *mmu, moffset32_t virtaddr, int query)
 
 inline static _Bool mmu_iswritable(x86MMU *mmu, moffset32_t virtaddr)
 {
-    return mmu_query(mmu, virtaddr, SD_PROT) & PROT_WRITE;
+    int type = mmu_query(mmu, virtaddr, SD_TYPE);
+    return type != ST_RODATA && type != ST_XOCODE;
 }
 
 inline static _Bool mmu_isreadable(x86MMU *mmu, moffset32_t virtaddr)
 {
-    return mmu_query(mmu, virtaddr, SD_PROT) & PROT_READ;
+    int type = mmu_query(mmu, virtaddr, SD_TYPE);
+    return type != ST_XOCODE;
 }
 
 inline static _Bool mmu_isexecutable(x86MMU *mmu, moffset32_t virtaddr)
 {
-    return mmu_query(mmu, virtaddr, SD_PROT) & PROT_EXEC;
+    int type = mmu_query(mmu, virtaddr, SD_TYPE);
+    return type == ST_XOCODE || type == ST_RXCODE || type == ST_RWXCODE || type == ST_RWXSTACK;
 }
 
 //
@@ -176,6 +179,7 @@ inline static _Bool mmu_isexecutable(x86MMU *mmu, moffset32_t virtaddr)
 static void *mmu_mmap(x86MMU *mmu, moffset32_t virtaddr, size_t memsz, int prot, int flags, int fd, off_t offset, size_t filesz)
 {
     void *buffer;
+    int type;
 
     if (!mmu || memsz == 0)
         return 0;
@@ -215,12 +219,25 @@ static void *mmu_mmap(x86MMU *mmu, moffset32_t virtaddr, size_t memsz, int prot,
     // set the actual protection requested
     //mprotect(buffer, memsz, prot);
 
+    if ((prot & PROT_READ) && !(prot & PROT_WRITE) && !(prot & PROT_EXEC) && !(flags & MF_STACK))
+        type = ST_RODATA;
+    else if ((prot & PROT_READ) && (prot & PROT_WRITE) && !(prot & PROT_EXEC) && !(flags & MF_STACK))
+        type = ST_RWDATA;
+    else if ((prot & PROT_READ) && !(prot & PROT_WRITE) && (prot & PROT_EXEC) && !(flags & MF_STACK))
+        type = ST_RXCODE;
+    else if ((prot & PROT_READ) && (prot & PROT_WRITE) && (prot & PROT_EXEC) && !(flags & MF_STACK))
+        type = ST_RWXCODE;
+    else if ((prot & PROT_READ) && (prot & PROT_WRITE) && !(prot & PROT_EXEC) && (flags & MF_STACK))
+        type = ST_RWSTACK;
+    else
+        type = ST_RWXSTACK;
+
     mmu->mm_segment_tbl = xreallocarray(mmu->mm_segment_tbl, ++mmu->mm_segments, sizeof(*mmu->mm_segment_tbl));
 
     mmu->mm_segment_tbl[mmu->mm_segments-1].buffer_ = buffer;
     mmu->mm_segment_tbl[mmu->mm_segments-1].s_limit = virtaddr + memsz;
     mmu->mm_segment_tbl[mmu->mm_segments-1].s_start = virtaddr;
-    mmu->mm_segment_tbl[mmu->mm_segments-1].s_prot = prot;
+    mmu->mm_segment_tbl[mmu->mm_segments-1].s_type = type;
 
     if (flags & MF_STACK)
         mmu->mm_stack = &mmu->mm_segment_tbl[mmu->mm_segments-1];
@@ -290,12 +307,12 @@ uint8_t mmu_fetch(x86MMU *mmu, moffset32_t virtaddr)
 
     buffer = translate(mmu, virtaddr);
     if (!buffer) {
-        mmu_set_error(mmu, ESEGFAULT, "invalid memory read at 0x%lx", virtaddr);
+        mmu_set_error(mmu, ESEGFAULT, "Segmentation Fault at 0x%lx", virtaddr);
         return 0;
     }
 
     if (!mmu_isexecutable(mmu, virtaddr)) {
-        mmu_set_error(mmu, EPROT, "attempted to execute code from a non-executable page at 0x%lx", virtaddr);
+        mmu_set_error(mmu, EPROT, "attempted to execute code from a non-executable segment at 0x%lx", virtaddr);
         return 0;
     }
 
@@ -315,12 +332,12 @@ uint64_t readx(x86MMU *mmu, moffset32_t virtaddr, int size)
     buffer = translate(mmu, virtaddr);
 
     if (!buffer) {
-        mmu_set_error(mmu, ESEGFAULT, "invalid memory read at 0x%lx", virtaddr);
+        mmu_set_error(mmu, ESEGFAULT, "Segmentation Fault at 0x%lx", virtaddr);
         return 0;
     }
 
     if (!mmu_isreadable(mmu, virtaddr)) {
-        mmu_set_error(mmu, EPROT, "attempted read at non-readable page at 0x%lx", virtaddr);
+        mmu_set_error(mmu, EPROT, "attempted read at non-readable segment at 0x%lx", virtaddr);
         return 0;
     }
 
@@ -364,6 +381,9 @@ uint64_t mmu_read64(x86MMU *mmu, moffset32_t virtaddr)
     return  readx(mmu, virtaddr, 64);
 }
 
+
+// write
+
 void writex(x86MMU *mmu, uint64_t bytes, moffset32_t virtaddr, int size)
 {
     void *buffer = NULL;
@@ -373,11 +393,11 @@ void writex(x86MMU *mmu, uint64_t bytes, moffset32_t virtaddr, int size)
 
     buffer = translate(mmu, virtaddr);
     if (!buffer) {
-        mmu_set_error(mmu, ESEGFAULT, "invalid memory write at 0x%lx", virtaddr);
+        mmu_set_error(mmu, ESEGFAULT, "Segmentation Fault at 0x%lx", virtaddr);
         return;
     }
     if (!mmu_iswritable(mmu, virtaddr)) {
-        mmu_set_error(mmu, EPROT, "attempted write at non-writable page at 0x%lx", virtaddr);
+        mmu_set_error(mmu, EPROT, "attempted write at non-writable segment at 0x%lx", virtaddr);
         return;
     }
 
@@ -421,21 +441,15 @@ void mmu_write64(x86MMU *mmu, uint64_t byte, moffset32_t virtaddr)
 
 inline const uint8_t *mmu_getptr(x86MMU *mmu, moffset32_t virtaddr)
 {
+    if (!mmu)
+        return NULL;
     return (const uint8_t *)translate(mmu, virtaddr);
 }
 
-inline _Bool mmu_isdataptr(x86MMU *mmu, moffset32_t virtaddr)
-{
-    int prot = mmu_query(mmu, virtaddr, SD_PROT);
-    return !(prot & PROT_EXEC) && prot & PROT_READ;
-}
 
-_Bool mmu_iscodeptr(x86MMU *mmu, moffset32_t virtaddr)
+inline int mmu_ptrtype(x86MMU *mmu, moffset32_t virtaddr)
 {
-    return mmu_query(mmu, virtaddr, SD_PROT) & PROT_EXEC;
-}
-
-inline _Bool mmu_isstackptr(x86MMU *mmu, moffset32_t virtaddr)
-{
-    return mmu_query(mmu, virtaddr, SD_BASE) == conf_mmu_top_stack_address;
+    if (!mmu)
+        return 0;
+    return mmu_query(mmu, virtaddr, SD_TYPE);
 }

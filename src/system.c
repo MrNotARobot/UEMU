@@ -119,62 +119,22 @@ char *strcatall(size_t argc, ...)
 
 char *int2hexstr(uint32_t n, uint8_t padding)
 {
-    char *s = xcalloc(11, sizeof(*s));  // 0xdeadbeef = 10 characters + null byte
-    size_t index = 0;
-    uint32_t mask = 0xf0000000;
-    int nibble = 8;
-    _Bool found_bits = 0;   // to not add leading bytes to the string
-    size_t first_nibble = 0;
+    char *s = xcalloc(12, sizeof(*s));  // 0xdeadbeef = 10 characters + null byte
+    if (padding > 8)
+        padding = 8;
 
-    s[index++] = '0';
-    s[index++] = 'x';
+    snprintf(s, 11, "0x%0*x", padding, n);
+    return s;
+}
 
-    if (!n && !padding) {
-        s[index++] = '0';
-        return s;
-    }
-
-    if (padding) {
-        for (size_t i = nibble, k = mask; i != 0; i--, k >>=4) {
-            if ((n & k) >> 4*(i - 1)) {
-                first_nibble = i;
-                if (first_nibble >= padding)
-                    padding = 0;
-                else
-                    padding -= first_nibble;
-                break;
-            }
-        }
-            if (index + padding >= 10)
-                s = xreallocarray(s, index + padding + first_nibble + 1, sizeof(*s));
-
-            for (size_t i = 0; i < padding; i++)
-                s[index++] = '0';
-    }
+char *int2str(uint32_t n)
+{
+    char *s = xcalloc(15, sizeof(*s));  // should be big enough for UINT32_MAX
 
     if (!n)
-        return s;
+        return xstrdup("0");
 
-    while (nibble != 0) {
-
-        if ((index - padding) > 2)
-            found_bits = 1;
-
-        switch ((n & mask) >> 4*(nibble - 1)) {
-            case 0: (found_bits) ? s[index++] = '0' : 0; break;
-            case 1: s[index++] = '1'; break;
-            case 2: s[index++] = '2'; break; case 3: s[index++] = '3'; break;
-            case 4: s[index++] = '4'; break; case 5: s[index++] = '5'; break;
-            case 6: s[index++] = '6'; break; case 7: s[index++] = '7'; break;
-            case 8: s[index++] = '8'; break; case 9: s[index++] = '9'; break;
-            case 10: s[index++] = 'a'; break; case 11: s[index++] = 'b'; break;
-            case 12: s[index++] = 'c'; break; case 13: s[index++] = 'd'; break;
-            case 14: s[index++] = 'e'; break; case 15: s[index++] = 'f'; break;
-        }
-        nibble--;
-        mask >>= 4;
-    }
-
+    snprintf(s, 10, "%d", n);
     return s;
 }
 

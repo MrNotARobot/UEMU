@@ -27,13 +27,14 @@
 #include <ctype.h>
 
 #include "cpu.h"
-#include "../system.h"
-#include "../memory.h"
+#include "dbg.h"
 #include "disassembler.h"
 
-static uint32_t rdmemx(x86CPU *cpu, moffset32_t effctvaddr, int size);
-static void wrmemx(x86CPU *cpu, moffset32_t effctvaddr, uint32_t src, int size);
-static void fetch(x86CPU *, struct instruction *);
+#include "../system.h"
+#include "../memory.h"
+
+static uint32_t readMx(x86CPU *cpu, moffset32_t vaddr, int size, _Bool);
+static void writeMx(x86CPU *cpu, moffset32_t vaddr, uint32_t src, int size);
 static void build_environment(x86CPU *, int, char **, char **);
 
 //
@@ -46,7 +47,7 @@ void x86_startcpu(x86CPU *cpu)
 
     x86_init_opcode_table();
     mmu_init(&cpu->mmu);
-    x86_cpustat_init(cpu);
+    tracer_start(&cpu->tracer, &cpu->resolver);
 
     cpu->EAX = 0; cpu->ECX = 0; cpu->EDX = 0; cpu->EBX = 0; cpu->ESI = 0;
     cpu->EDI = 0; cpu->ESP = 0; cpu->EBP = 0; cpu->EIP = 0;
@@ -57,13 +58,8 @@ void x86_startcpu(x86CPU *cpu)
     cpu->eflags.f_NT = 0; cpu->eflags.f_IOPL = 0; cpu->eflags.f_OF = 0;
     cpu->eflags.f_DF = 0; cpu->eflags.f_IF = 0; cpu->eflags.f_TF = 0;
     cpu->eflags.f_SF = 0; cpu->eflags.f_ZF = 0; cpu->eflags.f_AF = 0;
-    cpu->eflags.f_PF = 0; cpu->eflags.reserved1 = 1; cpu->eflags.f_CF = 0;
+    cpu->eflags.f_PF = 0; cpu->eflags.f_CF = 0;
 
-    cpu->reg_table_[EAX] = &cpu->EAX; cpu->reg_table_[ECX] = &cpu->ECX;
-    cpu->reg_table_[EDX] = &cpu->EDX; cpu->reg_table_[EBX] = &cpu->EBX;
-    cpu->reg_table_[ESP] = &cpu->ESP; cpu->reg_table_[EBP] = &cpu->EBP;
-    cpu->reg_table_[ESI] = &cpu->ESI; cpu->reg_table_[EDI] = &cpu->EDI;
-    cpu->reg_table_[EIP] = &cpu->EIP;
     cpu->eflags_ptr_ = &cpu->eflags;
 
     cpu->sreg_table_[CS] = &cpu->CS; cpu->sreg_table_[SS] = &cpu->SS;
@@ -79,11 +75,11 @@ void x86_stopcpu(x86CPU *cpu)
 
     x86_free_opcode_table();
     sr_closecache(x86_resolver(cpu));
+    tracer_stop(&cpu->tracer);
 
     elf_unload(&cpu->executable);
     mmu_unloadall(&cpu->mmu);
 
-    xfree(cpu->cpustat.callstack);
 }
 
 // exception handling
@@ -97,7 +93,7 @@ void x86_raise_exception(x86CPU *cpu, int exct)
     if (!cpu)
         return;
 
-    saved_eip = x86_rdreg32(cpu, EIP);
+    saved_eip = x86_readR32(cpu, EIP);
     x86_stopcpu(cpu);
     switch (exct) {
         case INT_UD:
@@ -109,9 +105,9 @@ void x86_raise_exception(x86CPU *cpu, int exct)
             break;
         case INT_PF:
             if (errstr) {
-                s_error(1, "emulator: Page Fault at 0x%08x (%s)", faulty_addr, errstr);
+                s_error(1, "emulator: Program received signal SIGSEGV (%s)", errstr);
             } else {
-                s_error(1, "emulator: Page Fault at 0x%08x", faulty_addr);
+                s_error(1, "emulator: Program received signal SIGSEGV at 0x%08x", faulty_addr);
             }
             break;
         default:
@@ -134,7 +130,7 @@ void x86_raise_exception_d(x86CPU *cpu, int exct, moffset32_t fault_addr, const 
 
 
 
-static uint32_t rdmemx(x86CPU *cpu, moffset32_t effctvaddr, int size)
+static uint32_t readMx(x86CPU *cpu, moffset32_t vaddr, int size, _Bool tryread)
 {
     uint32_t bytes = 0;
 
@@ -143,140 +139,373 @@ static uint32_t rdmemx(x86CPU *cpu, moffset32_t effctvaddr, int size)
 
     switch (size) {
         case 8:
-            bytes = mmu_read8(&cpu->mmu, effctvaddr);
+            bytes = mmu_read8(&cpu->mmu, vaddr);
             break;
         case 16:
-            bytes = mmu_read16(&cpu->mmu, effctvaddr);
+            bytes = mmu_read16(&cpu->mmu, vaddr);
             break;
         case 32:
-            bytes = mmu_read32(&cpu->mmu, effctvaddr);
+            bytes = mmu_read32(&cpu->mmu, vaddr);
             break;
     }
 
-    if (mmu_error(&cpu->mmu)) {
-        x86_raise_exception_d(cpu, INT_PF, effctvaddr, mmu_errstr(&cpu->mmu));
-    }
+    if (!tryread && mmu_error(&cpu->mmu))
+        x86_raise_exception_d(cpu, INT_PF, vaddr, mmu_errstr(&cpu->mmu));
+
+    mmu_clrerror(&cpu->mmu);
 
     return bytes;
 }
 
-static void wrmemx(x86CPU *cpu, moffset32_t effctvaddr, uint32_t src, int size)
+static void writeMx(x86CPU *cpu, moffset32_t vaddr, uint32_t src, int size)
 {
     if (!cpu)
         return;
 
     switch (size) {
         case 8:
-            mmu_write8(&cpu->mmu, src, effctvaddr);
+            mmu_write8(&cpu->mmu, src, vaddr);
             break;
         case 16:
-            mmu_write16(&cpu->mmu, src, effctvaddr);
+            mmu_write16(&cpu->mmu, src, vaddr);
             break;
         case 32:
-            mmu_write32(&cpu->mmu, src, effctvaddr);
+            mmu_write32(&cpu->mmu, src, vaddr);
             break;
     }
 
     if (mmu_error(&cpu->mmu))
-        x86_raise_exception_d(cpu, INT_PF, effctvaddr, mmu_errstr(&cpu->mmu));
+        x86_raise_exception_d(cpu, INT_PF, vaddr, mmu_errstr(&cpu->mmu));
 }
 
-// memory reading/writing
-uint8_t x86_rdmem8(x86CPU *cpu, moffset32_t effctvaddr)
+//
+// memory reading
+//
+
+uint8_t x86_readM8(x86CPU *cpu, moffset32_t vaddr)
 {
-    return rdmemx(cpu, effctvaddr, 8);
-}
-uint16_t x86_rdmem16(x86CPU *cpu, moffset32_t effctvaddr)
-{
-    return rdmemx(cpu, effctvaddr, 16);
-}
-uint32_t x86_rdmem32(x86CPU *cpu, moffset32_t effctvaddr)
-{
-    return rdmemx(cpu, effctvaddr, 32);
+    return readMx(cpu, vaddr, 8, 0);
 }
 
-void x86_wrmem8(x86CPU *cpu, moffset32_t effctvaddr, uint8_t byte)
+uint16_t x86_readM16(x86CPU *cpu, moffset32_t vaddr)
 {
-    wrmemx(cpu, effctvaddr, byte, 8);
+    return readMx(cpu, vaddr, 16, 0);
 }
 
-void x86_wrmem16(x86CPU *cpu, moffset32_t effctvaddr, uint16_t bytes)
+uint32_t x86_readM32(x86CPU *cpu, moffset32_t vaddr)
 {
-    wrmemx(cpu, effctvaddr, bytes, 16);
+    return readMx(cpu, vaddr, 32, 0);
 }
 
-void x86_wrmem32(x86CPU * cpu, moffset32_t effctvaddr, uint32_t bytes)
+uint8_t x86_try_readM8(x86CPU *cpu, moffset32_t vaddr)
 {
-    wrmemx(cpu, effctvaddr, bytes, 32);
+    return readMx(cpu, vaddr, 8, 1);
+}
+
+uint16_t x86_try_readM16(x86CPU *cpu, moffset32_t vaddr)
+{
+    return readMx(cpu, vaddr, 16, 1);
+}
+
+uint32_t x86_try_readM32(x86CPU *cpu, moffset32_t vaddr)
+{
+    return readMx(cpu, vaddr, 32, 1);
+}
+
+//
+//  write to memory
+//
+
+void x86_writeM8(x86CPU *cpu, moffset32_t vaddr, uint8_t byte)
+{
+    writeMx(cpu, vaddr, byte, 8);
+}
+
+void x86_writeM16(x86CPU *cpu, moffset32_t vaddr, uint16_t bytes)
+{
+    writeMx(cpu, vaddr, bytes, 16);
+}
+
+void x86_writeM32(x86CPU * cpu, moffset32_t vaddr, uint32_t bytes)
+{
+    writeMx(cpu, vaddr, bytes, 32);
 }
 
 // the atomic versions will be left to be worked on when we start to support processes and threads
-uint8_t x86_atomic_rdmem8(x86CPU *cpu, moffset32_t effctvaddr)
+uint8_t x86_atomic_readM8(x86CPU *cpu, moffset32_t vaddr)
 {
-    return rdmemx(cpu, effctvaddr, 8);
+    return readMx(cpu, vaddr, 8, 0);
 }
 
-uint16_t x86_atomic_rdmem16(x86CPU *cpu, moffset32_t effctvaddr)
+uint16_t x86_atomic_readM16(x86CPU *cpu, moffset32_t vaddr)
 {
-    return rdmemx(cpu, effctvaddr, 16);
+    return readMx(cpu, vaddr, 16, 0);
 }
 
-uint32_t x86_atomic_rdmem32(x86CPU *cpu, moffset32_t effctvaddr)
+uint32_t x86_atomic_readM32(x86CPU *cpu, moffset32_t vaddr)
 {
-    return rdmemx(cpu, effctvaddr, 32);
+    return readMx(cpu, vaddr, 32, 0);
 }
 
-void x86_atomic_wrmem8(x86CPU *cpu, moffset32_t effctvaddr, uint8_t byte)
+void x86_atomic_writeM8(x86CPU *cpu, moffset32_t vaddr, uint8_t byte)
 {
-    wrmemx(cpu, effctvaddr, byte, 8);
+    writeMx(cpu, vaddr, byte, 8);
 }
 
-void x86_atomic_wrmem16(x86CPU *cpu, moffset32_t effctvaddr, uint16_t bytes)
+void x86_atomic_writeM16(x86CPU *cpu, moffset32_t vaddr, uint16_t bytes)
 {
-    wrmemx(cpu, effctvaddr, bytes, 16);
+    writeMx(cpu, vaddr, bytes, 16);
 }
 
-void x86_atomic_wrmem32(x86CPU * cpu, moffset32_t effctvaddr, uint32_t bytes)
+void x86_atomic_writeM32(x86CPU * cpu, moffset32_t vaddr, uint32_t bytes)
 {
-    wrmemx(cpu, effctvaddr, bytes, 32);
+    writeMx(cpu, vaddr, bytes, 32);
 }
 
-void x86_wrseq(x86CPU *cpu, moffset32_t effctvaddr, const uint8_t *buffer, size_t size)
+void x86_wrseq(x86CPU *cpu, moffset32_t vaddr, const uint8_t *buffer, size_t size)
 {
     if (!cpu)
         return;
 
     for (size_t i = 0; i < size; i++) {
-        x86_wrmem8(cpu, effctvaddr, buffer[i]);
-        effctvaddr++;
+        x86_writeM8(cpu, vaddr, buffer[i]);
+        vaddr++;
     }
 }
 
-void x86_rrseq(x86CPU *cpu, moffset32_t effctvaddr, uint8_t *dest, size_t size)
+void x86_rrseq(x86CPU *cpu, moffset32_t vaddr, uint8_t *dest, size_t size)
 {
     if (!cpu)
         return;
 
     for (size_t i = 0; i < size; i++) {
-        dest[i] = x86_rdmem8(cpu, effctvaddr);
-        effctvaddr++;
+        dest[i] = x86_readM8(cpu, vaddr);
+        vaddr++;
     }
+}
+
+//
+// Deal with registers
+//
+
+void x86_increment_eip(x86CPU *cpu, moffset16_t offset)
+{
+    x86_update_eip_absolute(cpu, cpu->EIP + offset);
+}
+
+void x86_update_eip_absolute(x86CPU *cpu, moffset32_t vaddr)
+{
+    if (!cpu)
+        return;
+
+    cpu->EIP = vaddr;
+    tracer_set(&cpu->tracer, TRACE_VAR_EIP, cpu->EIP);
+}
+
+// write to registers
+void x86_writeR8(x86CPU *cpu, uint8_t register8, uint8_t value)
+{
+
+    if (!cpu)
+        return;
+
+    switch (register8) {
+        case AL: 
+            cpu->EAX = (cpu->EAX & 0xffffff00) | value;
+            tracer_set(&cpu->tracer, TRACE_VAR_EAX, cpu->EAX);
+            break;
+        case AH:
+            cpu->EAX = (cpu->EAX & 0xffff00ff) | (value << 4);
+            tracer_set(&cpu->tracer, TRACE_VAR_EAX, cpu->EAX);
+            break;
+        case BL: 
+            cpu->EBX = (cpu->EBX & 0xffffff00) | value;
+            tracer_set(&cpu->tracer, TRACE_VAR_EBX, cpu->EBX);
+            break;
+        case BH:
+            cpu->EBX = (cpu->EBX & 0xffff00ff) | (value << 4);
+            tracer_set(&cpu->tracer, TRACE_VAR_EBX, cpu->EBX);
+            break;
+        case CL:
+            cpu->ECX = (cpu->ECX & 0xffffff00) | value;
+            tracer_set(&cpu->tracer, TRACE_VAR_ECX, cpu->ECX);
+            break;
+        case CH:
+            cpu->ECX = (cpu->ECX & 0xffff00ff) | (value << 4);
+            tracer_set(&cpu->tracer, TRACE_VAR_ECX, cpu->ECX);
+            break;
+        case DL:
+            cpu->EDX = (cpu->EDX & 0xffffff00) | value;
+            tracer_set(&cpu->tracer, TRACE_VAR_EDX, cpu->EDX);
+            break;
+        case DH:
+            cpu->EDX = (cpu->EDX & 0xffff00ff) | (value << 4);
+            tracer_set(&cpu->tracer, TRACE_VAR_EDX, cpu->EDX);
+            break;
+    }
+}
+
+void x86_writeR16(x86CPU *cpu, uint8_t register16, uint16_t value)
+{
+
+    if (!cpu)
+        return;
+
+    switch (register16) {
+        case AX:
+            cpu->EAX = (cpu->EAX & 0xffff0000) | value;
+            tracer_set(&cpu->tracer, TRACE_VAR_EAX, cpu->EAX);
+            break;
+        case BX:
+            cpu->EBX = (cpu->EBX & 0xffff0000) | value;
+            tracer_set(&cpu->tracer, TRACE_VAR_EBX, cpu->EBX);
+            break;
+        case CX:
+            cpu->ECX = (cpu->ECX & 0xffff0000) | value;
+            tracer_set(&cpu->tracer, TRACE_VAR_ECX, cpu->ECX);
+            break;
+        case DX:
+            cpu->EDX = (cpu->EDX & 0xffff0000) | value;
+            tracer_set(&cpu->tracer, TRACE_VAR_EDX, cpu->EDX);
+            break;
+        case SP:
+            cpu->ESP = (cpu->ESP & 0xffff0000) | value;
+            tracer_set(&cpu->tracer, TRACE_VAR_ESP, cpu->ESP);
+            break;
+        case BP:
+            cpu->EBP = (cpu->EBP & 0xffff0000) | value;
+            tracer_set(&cpu->tracer, TRACE_VAR_EBP, cpu->EBP);
+            break;
+        case DI:
+            cpu->EDI = (cpu->EDI & 0xffff0000) | value;
+            tracer_set(&cpu->tracer, TRACE_VAR_EDI, cpu->EDI);
+            break;
+        case SI:
+            cpu->ESI = (cpu->ESI & 0xffff0000) | value;
+            tracer_set(&cpu->tracer, TRACE_VAR_ESI, cpu->ESI);
+            break;
+    }
+}
+
+void x86_writeR32(x86CPU *cpu, uint8_t register32, uint32_t value)
+{
+    if (!cpu)
+        return;
+
+    switch (register32) {
+        case EIP:
+            x86_update_eip_absolute(cpu, value);
+            break;
+        case EAX:
+            cpu->EAX = value;
+            tracer_set(&cpu->tracer, TRACE_VAR_EAX, cpu->EAX);
+            break;
+        case EBX:
+            cpu->EBX = value;
+            tracer_set(&cpu->tracer, TRACE_VAR_EBX, cpu->EBX);
+            break;
+        case ECX:
+            cpu->ECX = value;
+            tracer_set(&cpu->tracer, TRACE_VAR_ECX, cpu->ECX);
+            break;
+        case EDX:
+            cpu->EDX = value;
+            tracer_set(&cpu->tracer, TRACE_VAR_EDX, cpu->EDX);
+            break;
+        case ESP:
+            cpu->ESP = value;
+            tracer_set(&cpu->tracer, TRACE_VAR_ESP, cpu->ESP);
+            break;
+        case EBP:
+            cpu->EBP = value;
+            tracer_set(&cpu->tracer, TRACE_VAR_EBP, cpu->EBP);
+            break;
+        case EDI:
+            cpu->EDI = value;
+            tracer_set(&cpu->tracer, TRACE_VAR_EDI, cpu->EDI);
+            break;
+        case ESI:
+            cpu->ESI = value;
+            tracer_set(&cpu->tracer, TRACE_VAR_ESI, cpu->ESI);
+            break;
+    }
+}
+
+// read from registers
+uint8_t x86_readR8(x86CPU *cpu, uint8_t register8)
+{
+    if (!cpu)
+        return 0;
+
+    switch (register8) {
+        case AL: return cpu ->EAX & 0x000000ff;
+        case AH: return cpu ->EAX & 0x0000ff00;
+        case BL: return cpu ->EBX & 0x000000ff;
+        case BH: return cpu ->EBX & 0x0000ff00;
+        case CL: return cpu ->ECX & 0x000000ff;
+        case CH: return cpu ->ECX & 0x0000ff00;
+        case DL: return cpu ->EDX & 0x000000ff;
+        case DH: return cpu ->EDX & 0x0000ff00;
+    }
+
+    return 0;
+}
+
+uint16_t x86_readR16(x86CPU *cpu, uint8_t register16)
+{
+    if (!cpu)
+        return 0;
+
+    return x86_readR32(cpu, register16) & 0x0000ffff;
+}
+
+uint32_t x86_readR32(x86CPU *cpu, uint8_t register32)
+{
+    if (!cpu)
+        return 0;
+
+    switch (register32) {
+        case EIP: return cpu->EIP;
+        case EAX: return cpu ->EAX;
+        case EBX: return cpu ->EBX;
+        case ECX: return cpu ->ECX;
+        case EDX: return cpu ->EDX;
+        case ESP: return cpu ->ESP;
+        case EBP: return cpu ->EBP;
+        case EDI: return cpu ->EDI;
+        case ESI: return cpu ->ESI;
+    }
+
+    return 0;
+}
+
+const uint8_t *x86_getptr(x86CPU *cpu, moffset32_t vaddr)
+{
+    if (!cpu)
+        return NULL;
+
+    return mmu_getptr(&cpu->mmu, vaddr);
+}
+
+int x86_ptrtype(x86CPU *cpu, moffset32_t vaddr)
+{
+    int type;
+
+    if (!cpu)
+        return 0;
+
+    type = mmu_ptrtype(&cpu->mmu, vaddr);
+    if (type == ST_RODATA || type == ST_RWDATA)
+        return DATA_PTR;
+    else if (type == ST_RXCODE || type == ST_XOCODE || type == ST_RWXCODE)
+        return CODE_PTR;
+    else if (type == ST_RWSTACK || type == ST_RWXSTACK)
+        return STACK_PTR;
+    else
+        return NOT_A_PTR;
 }
 
 //////////////
-
-// this will fetch the instruction and update the EIP accordingly
-static void fetch(x86CPU *cpu, struct instruction *instr)
-{
-    *instr = x86_decode(x86_mmu(cpu), x86_rdreg32(cpu, EIP));
-    if (mmu_error(&cpu->mmu))
-        x86_raise_exception_d(cpu, INT_PF, x86_rdreg32(cpu, EIP), mmu_errstr(&cpu->mmu));
-
-    if (instr->fail_to_fetch)
-        x86_raise_exception(cpu, INT_UD);
-
-    x86_wrreg32(cpu, EIP, x86_rdreg32(cpu, EIP) + instr->size);
-}
 
 static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
 {
@@ -305,10 +534,10 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
     {
         size_t envsz = strlen(envp[i]) + 1;
 
-        x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) - envsz);
+        x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) - envsz);
 
-        x86_wrseq(cpu, x86_rdreg32(cpu, ESP), (uint8_t *)envp[i], envsz);
-        environ_[i] = x86_rdreg32(cpu, ESP);
+        x86_wrseq(cpu, x86_readR32(cpu, ESP), (uint8_t *)envp[i], envsz);
+        environ_[i] = x86_readR32(cpu, ESP);
     }
 
     argv_ = xcalloc(argc + 1, sizeof (*argv_));
@@ -317,11 +546,11 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
     for (int i = argc; i >= 1; i--) {
         size_t argsz = strlen(argv[i]) + 1;
 
-        x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) - argsz);
+        x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) - argsz);
 
         x86_wrseq(cpu, cpu->ESP, (uint8_t *)argv[i], argsz);
 
-        argv_[i-1] = x86_rdreg32(cpu, ESP);
+        argv_[i-1] = x86_readR32(cpu, ESP);
     }
 
     // align the stack
@@ -332,22 +561,22 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
     environ_[environsz] = 0;
 
     for (int i = environsz; i >= 0; i--) {
-        x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) - 4);
+        x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) - 4);
 
-        x86_wrmem32(cpu, cpu->ESP, environ_[i]);
+        x86_writeM32(cpu, cpu->ESP, environ_[i]);
     }
 
     // the NULL ptr at the end of argv
     argv_[argc] = 0;
 
     for (int i = argc; i >= 0; i--) {
-        x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) - 4);
-        x86_wrmem32(cpu, cpu->ESP, argv_[i]);
+        x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) - 4);
+        x86_writeM32(cpu, cpu->ESP, argv_[i]);
     }
 
 
-    x86_wrreg32(cpu, ESP, x86_rdreg32(cpu, ESP) - 4);
-    x86_wrmem32(cpu, cpu->ESP, argc);
+    x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) - 4);
+    x86_writeM32(cpu, cpu->ESP, argc);
 
     xfree(argv[1]);
     xfree(environ_);
@@ -400,26 +629,33 @@ void x86_cpu_exec(char *executable, int argc, char *argv[], char **envp)
     if (elf_execstack(&cpu.executable))
         stack_flags |= B_STACKEXEC;
 
-    x86_wrreg32(&cpu, ESP, mmu_create_stack(&cpu.mmu, stack_flags));
-
-    x86_cpustat_set(&cpu, STAT_STACKTOP, x86_rdreg32(&cpu, ESP));
+    x86_writeR32(&cpu, ESP, mmu_create_stack(&cpu.mmu, stack_flags));
 
     build_environment(&cpu, argc, argv, envp);
 
-    x86_wrreg32(&cpu, EIP, elf_entrypoint(x86_elf(&cpu)));
+    x86_writeR32(&cpu, EIP, elf_entrypoint(&cpu.executable));
 
-    x86_cpustat_push_callstack(&cpu, x86_rdreg32(&cpu, EIP));
+    tracer_set(&cpu.tracer, TRACE_VAR_ESP, cpu.ESP);
+    tracer_set(&cpu.tracer, TRACE_VAR_EIP, cpu.EIP);
+
+    tracer_push(&cpu.tracer, cpu.EIP, 0, cpu.ESP);
 
     while (1) {
-        x86_cpustat_set(&cpu, STAT_EIP, x86_rdreg32(&cpu, EIP));
 
-        fetch(&cpu, &instr);
+        x86dbg_print_state(&cpu);
 
-        x86_cpustat_set_current_op(&cpu, instr);
-        x86_cpustat_update_callstack(&cpu);
-        x86_cpustat_print(&cpu);
+        instr = x86_decode(&cpu, cpu.EIP);
+
+        if (mmu_error(&cpu.mmu))
+            x86_raise_exception_d(&cpu, INT_PF, cpu.EIP, mmu_errstr(&cpu.mmu));
+
+        if (instr.fail_to_fetch)
+            x86_raise_exception(&cpu, INT_UD);
+
+        x86_increment_eip(&cpu, instr.size);
 
         instr.handler(&cpu, instr.data);
+
         // TODO: handle exceptions? I think it would be cool to imitate a real x86 cpu
         // handling of exceptions
     }

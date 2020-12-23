@@ -33,6 +33,7 @@ char *find_executable(const char *);
 char *coolstrcat(char *, size_t, ...);
 char *strcatall(size_t, ...);
 char *int2hexstr(uint32_t, uint8_t);
+char *int2str(uint32_t);
 
 void s_error(int, const char *, ...) __attribute__((format (printf, 2, 3))) __attribute__((noreturn));
 void s_info(const char *, ...) __attribute__((format (printf, 1, 2)));

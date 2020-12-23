@@ -3,14 +3,15 @@ set(SRCS
     system.c
     generic-elf.c
     sym-resolver.c
+    tracer.c
     x86/x86-mmu.c
+    x86/cpu.c
+    x86/dbg.c
     x86/x86-utils.c
-    x86/opcodes.c
     x86/disassembler.c
     x86/general-purpose.c
     x86/instructions.c
-    x86/cpustat.c
-    x86/cpu.c
+    x86/opcodes.c
     uemu.c
 )
 

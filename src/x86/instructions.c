@@ -657,7 +657,7 @@ void x86_mm_call(void *cpu, struct exec_data data)
     moffset32_t vaddr;
 
     if (data.lock)
-        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
+        x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
 
     if (data.adrsz_pfx)
         vaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
@@ -687,9 +687,9 @@ void x86_mm_call(void *cpu, struct exec_data data)
                 }
             } else {    // FF /3 CALL m16:32  CALL m16:16
                 if (data.oprsz_pfx)
-                    x86__mm_far_ptr16_call(cpu, x86_rdmem16(cpu, vaddr + 2), x86_rdmem16(cpu, vaddr));
+                    x86__mm_far_ptr16_call(cpu, x86_readM16(cpu, vaddr + 2), x86_readM16(cpu, vaddr));
                 else
-                    x86__mm_far_ptr32_call(cpu, x86_rdmem16(cpu, vaddr + 4), x86_rdmem32(cpu, vaddr));
+                    x86__mm_far_ptr32_call(cpu, x86_readM16(cpu, vaddr + 4), x86_readM32(cpu, vaddr));
             }
             break;
         case 0x9A:
@@ -2324,7 +2324,7 @@ void x86_mm_jcc(void *cpu, struct exec_data data)
     _Bool condition_is_true = 0;
     reg32_t jump_target = x86_findbranchtarget(cpu, data);
     if (data.lock)
-        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
+        x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
 
     switch (data.opc) {
         case 0x87:  // JA rel32     rel16
@@ -2345,9 +2345,9 @@ void x86_mm_jcc(void *cpu, struct exec_data data)
             break;
         case 0xE3:  // JCXZ rel8
             if (data.adrsz_pfx)
-                condition_is_true = x86_rdreg16(cpu, CX) == 0;
+                condition_is_true = x86_readR16(cpu, CX) == 0;
             else
-                condition_is_true = x86_rdreg32(cpu, ECX) == 0;
+                condition_is_true = x86_readR32(cpu, ECX) == 0;
             break;
         case 0x84:  // JE rel32     rel16
         case 0x74:  // JE rel8
@@ -2403,7 +2403,7 @@ void x86_mm_jcc(void *cpu, struct exec_data data)
     }
 
     if (condition_is_true)
-        x86_wrreg32(cpu, EIP, jump_target);
+        x86_writeR32(cpu, EIP, jump_target);
 }
 
 
@@ -2510,7 +2510,7 @@ void x86_lgs(void *cpu, struct exec_data data)
 void x86_mm_lea(void *cpu, struct exec_data data)
 {
     if (data.lock)
-        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
+        x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
 
     if (data.adrsz_pfx && data.oprsz_pfx)
         x86__mm_r16_m_lea(cpu, reg(data.modrm), x86_effectiveaddress16(cpu, data.modrm, data.moffset));
@@ -2759,7 +2759,7 @@ void x86_mm_mov(void *cpu, struct exec_data data)
     int reg_dest = 0;
     _Bool r8imm8 = 0, rXimmX = 0;
     if (data.lock)
-        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
+        x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
 
     if (data.adrsz_pfx)
         vaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
@@ -3293,7 +3293,7 @@ void x86_neg(void *cpu, struct exec_data data)
 void x86_mm_nop(void *cpu, struct exec_data data)
 {
     if (data.lock)
-        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
+        x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
 }
 
 
@@ -4094,7 +4094,7 @@ void x86_mm_pop(void *cpu, struct exec_data data)
     _Bool is_sreg = 0;
 
     if (data.lock)
-        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
+        x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
 
     switch (data.opc) {
         case 0x8F:
@@ -4525,7 +4525,7 @@ void x86_mm_push(void *cpu, struct exec_data data)
     _Bool  is_sreg = 0, is_reg = 0;
 
     if (data.lock)
-        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
+        x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
 
 
     if (data.adrsz_pfx)
@@ -4960,9 +4960,9 @@ void x86_mm_setcc(void *cpu, struct exec_data data)
 
     if (condition_is_true) {
         if (vaddr)
-            x86_wrmem8(cpu, vaddr, 1);
+            x86_writeM8(cpu, vaddr, 1);
         else
-            x86_wrreg8(cpu, effctvregister(data.modrm, 8), 1);
+            x86_writeR8(cpu, effctvregister(data.modrm, 8), 1);
     }
 }
 
@@ -5405,7 +5405,7 @@ void x86_sysret(void *cpu, struct exec_data data)
 void x86_mm_test(void *cpu, struct exec_data data)
 {
     if (data.lock)
-        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
+        x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
 
     moffset32_t vaddr;
 
@@ -5710,7 +5710,7 @@ void x86_mm_xor(void *cpu, struct exec_data data)
         case 0x30:  // r/m8, r8
             if (!vaddr) {
                 if (data.lock)
-                    x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
+                    x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
                 x86__mm_r8_r8_xor(cpu, effctvregister(data.modrm, 8), reg(data.modrm));
             } else {
                 x86__mm_m8_r8_xor(cpu, vaddr, reg(data.modrm), data.lock);
@@ -5720,7 +5720,7 @@ void x86_mm_xor(void *cpu, struct exec_data data)
             if (data.oprsz_pfx) {
                 if (!vaddr) {
                     if (data.lock)
-                        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
+                        x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
 
                     x86__mm_r16_r16_xor(cpu, effctvregister(data.modrm, 16), reg(data.modrm));
                 } else {
@@ -5729,7 +5729,7 @@ void x86_mm_xor(void *cpu, struct exec_data data)
             } else {
                 if (!vaddr) {
                     if (data.lock)
-                        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
+                        x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
 
                     x86__mm_r32_r32_xor(cpu, effctvregister(data.modrm, 32), reg(data.modrm));
                 } else {
@@ -5741,7 +5741,7 @@ void x86_mm_xor(void *cpu, struct exec_data data)
         case 0x32: // r8, r/m8
             if (!vaddr) {
                 if (data.lock)
-                    x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
+                    x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
 
                 x86__mm_r8_r8_xor(cpu, reg(data.modrm), effctvregister(data.modrm, 8));
             } else {
@@ -5753,7 +5753,7 @@ void x86_mm_xor(void *cpu, struct exec_data data)
             if (data.oprsz_pfx) {
                 if (!vaddr) {
                     if (data.lock)
-                        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
+                        x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
 
                     x86__mm_r16_r16_xor(cpu, reg(data.modrm), effctvregister(data.modrm, 16));
                 } else {
@@ -5762,7 +5762,7 @@ void x86_mm_xor(void *cpu, struct exec_data data)
             } else {
                 if (!vaddr) {
                     if (data.lock)
-                        x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
+                        x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
 
                     x86__mm_r32_r32_xor(cpu, reg(data.modrm), effctvregister(data.modrm, 32));
                 } else {
@@ -5773,13 +5773,13 @@ void x86_mm_xor(void *cpu, struct exec_data data)
             break;
         case 0x34: // AL, imm8
             if (data.lock)
-                x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
+                x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
 
             x86__mm_al_imm8_xor(cpu, lsb(data.imm1));
             break;
         case 0x35: // eAX, imm32    AX, imm16
             if (data.lock)
-                x86_raise_exception_d(cpu, INT_UD, x86_cpustat_query(cpu, STAT_EIP), "Invalid LOCK prefix");
+                x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
 
             if (data.oprsz_pfx)
                 x86__mm_ax_imm16_xor(cpu, low16(data.imm1));

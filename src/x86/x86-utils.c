@@ -207,21 +207,21 @@ inline const char *stringfyregister(uint8_t regstr, uint8_t size)
 {
     if (size == 8) {
         switch (regstr) {
-            case AL: return "AL"; case CL: return "CL"; case DL: return "DL";
-            case BL: return "BL"; case AH: return "AH"; case CH: return "CH";
-            case DH: return "DH"; case BH: return "BH";
+            case AL: return "al"; case CL: return "cl"; case DL: return "dl";
+            case BL: return "bl"; case AH: return "ah"; case CH: return "ch";
+            case DH: return "dh"; case BH: return "bh";
         }
     } else if (size == 16) {
         switch (regstr) {
-            case AX: return "AX"; case CX: return "CX"; case DX: return "DX";
-            case BX: return "BX"; case SP: return "SP"; case BP: return "BP";
-            case SI: return "SI"; case DI: return "DI";
+            case AX: return "ax"; case CX: return "cx"; case DX: return "dx";
+            case BX: return "bx"; case SP: return "sp"; case BP: return "bp";
+            case SI: return "si"; case DI: return "di";
         }
     } else if (size == 32) {
         switch (regstr) {
-            case EAX: return "EAX"; case ECX: return "ECX"; case EDX: return "EDX";
-            case EBX: return "EBX"; case ESP: return "ESP"; case EBP: return "EBP";
-            case ESI: return "ESI"; case EDI: return "EDI"; case EIP: return "EIP";
+            case EAX: return "eax"; case ECX: return "ecx"; case EDX: return "edx";
+            case EBX: return "ebx"; case ESP: return "esp"; case EBP: return "ebp";
+            case ESI: return "esi"; case EDI: return "edi"; case EIP: return "eip";
         }
     }
 
@@ -240,25 +240,25 @@ moffset32_t x86_effectiveaddress16(void *cpu, uint8_t modrm, uint32_t imm)
 
     if (mod == 0) {
         switch (rm) {
-            case 0b000: vaddr = x86_rdreg16(cpu, EBX) + x86_rdreg16(cpu, ESI); break;
-            case 0b001: vaddr = x86_rdreg16(cpu, EBX) + x86_rdreg16(cpu, EDI); break;
-            case 0b010: vaddr = x86_rdreg16(cpu, EBP) + x86_rdreg16(cpu, ESI); break;
-            case 0b011: vaddr = x86_rdreg16(cpu, EBP) + x86_rdreg16(cpu, EDI); break;
-            case 0b100: vaddr = x86_rdreg16(cpu, ESI); break;
-            case 0b101: vaddr = x86_rdreg16(cpu, EDI); break;
+            case 0b000: vaddr = x86_readR16(cpu, EBX) + x86_readR16(cpu, ESI); break;
+            case 0b001: vaddr = x86_readR16(cpu, EBX) + x86_readR16(cpu, EDI); break;
+            case 0b010: vaddr = x86_readR16(cpu, EBP) + x86_readR16(cpu, ESI); break;
+            case 0b011: vaddr = x86_readR16(cpu, EBP) + x86_readR16(cpu, EDI); break;
+            case 0b100: vaddr = x86_readR16(cpu, ESI); break;
+            case 0b101: vaddr = x86_readR16(cpu, EDI); break;
             case 0b110: vaddr = imm; break;
-            case 0b111: vaddr = x86_rdreg16(cpu, EBX); break;
+            case 0b111: vaddr = x86_readR16(cpu, EBX); break;
         }
     } else if (mod == 1 || mod == 2) {
         switch (rm) {
-            case 0b000: vaddr = x86_rdreg16(cpu, EBX) + imm; break;
-            case 0b001: vaddr = x86_rdreg16(cpu, EBX) + imm; break;
-            case 0b010: vaddr = x86_rdreg16(cpu, EBP) + imm; break;
-            case 0b011: vaddr = x86_rdreg16(cpu, EBP) + imm; break;
-            case 0b100: vaddr = x86_rdreg16(cpu, ESI) + imm; break;
-            case 0b101: vaddr = x86_rdreg16(cpu, EDI) + imm; break;
-            case 0b110: vaddr = x86_rdreg16(cpu, EBP) + imm; break;
-            case 0b111: vaddr = x86_rdreg16(cpu, EBX) + imm; break;
+            case 0b000: vaddr = x86_readR16(cpu, EBX) + imm; break;
+            case 0b001: vaddr = x86_readR16(cpu, EBX) + imm; break;
+            case 0b010: vaddr = x86_readR16(cpu, EBP) + imm; break;
+            case 0b011: vaddr = x86_readR16(cpu, EBP) + imm; break;
+            case 0b100: vaddr = x86_readR16(cpu, ESI) + imm; break;
+            case 0b101: vaddr = x86_readR16(cpu, EDI) + imm; break;
+            case 0b110: vaddr = x86_readR16(cpu, EBP) + imm; break;
+            case 0b111: vaddr = x86_readR16(cpu, EBX) + imm; break;
         }
     } // mod == 3 are registers, so we return zero
 
@@ -281,25 +281,25 @@ moffset32_t x86_effectiveaddress32(void *cpu, uint8_t modrm, uint8_t sib, uint32
 
     if (mod == 0) {
         switch (rm) {
-            case 0b000: vaddr = x86_rdreg32(cpu, EAX); break;
-            case 0b001: vaddr = x86_rdreg32(cpu, ECX); break;
-            case 0b010: vaddr = x86_rdreg32(cpu, EDX); break;
-            case 0b011: vaddr = x86_rdreg32(cpu, EBX); break;
+            case 0b000: vaddr = x86_readR32(cpu, EAX); break;
+            case 0b001: vaddr = x86_readR32(cpu, ECX); break;
+            case 0b010: vaddr = x86_readR32(cpu, EDX); break;
+            case 0b011: vaddr = x86_readR32(cpu, EBX); break;
             case 0b100: use_sib = 1; break;
-            case 0b101: vaddr = x86_rdreg32(cpu, EIP) + imm; break;
-            case 0b110: vaddr = x86_rdreg32(cpu, ESI); break;
-            case 0b111: vaddr = x86_rdreg32(cpu, EDI); break;
+            case 0b101: vaddr = x86_readR32(cpu, EIP) + imm; break;
+            case 0b110: vaddr = x86_readR32(cpu, ESI); break;
+            case 0b111: vaddr = x86_readR32(cpu, EDI); break;
         }
     } else if (mod == 1 || mod == 2) {
         switch (rm) {
-            case 0b000: vaddr = x86_rdreg32(cpu, EAX) + imm; break;
-            case 0b001: vaddr = x86_rdreg32(cpu, ECX) + imm; break;
-            case 0b010: vaddr = x86_rdreg32(cpu, EDX) + imm; break;
-            case 0b011: vaddr = x86_rdreg32(cpu, EBX) + imm; break;
+            case 0b000: vaddr = x86_readR32(cpu, EAX) + imm; break;
+            case 0b001: vaddr = x86_readR32(cpu, ECX) + imm; break;
+            case 0b010: vaddr = x86_readR32(cpu, EDX) + imm; break;
+            case 0b011: vaddr = x86_readR32(cpu, EBX) + imm; break;
             case 0b100: use_sib = 1; break;
-            case 0b101: vaddr = x86_rdreg32(cpu, EBP) + imm; break;
-            case 0b110: vaddr = x86_rdreg32(cpu, ESI) + imm; break;
-            case 0b111: vaddr = x86_rdreg32(cpu, EDI) + imm; break;
+            case 0b101: vaddr = x86_readR32(cpu, EBP) + imm; break;
+            case 0b110: vaddr = x86_readR32(cpu, ESI) + imm; break;
+            case 0b111: vaddr = x86_readR32(cpu, EDI) + imm; break;
         }
     } // mod == 3 are registers, so we return zero
 
@@ -315,7 +315,7 @@ moffset32_t x86_effectiveaddress32(void *cpu, uint8_t modrm, uint8_t sib, uint32
 
         if (base == EBP) {
             if (index != 0b100)
-                vaddr = x86_rdmem32(cpu, x86_rdreg32(cpu, index) * ss_factor);
+                vaddr = x86_readM32(cpu, x86_readR32(cpu, index) * ss_factor);
 
             if (mod == 1)
                 vaddr += lsb(imm);
@@ -323,11 +323,11 @@ moffset32_t x86_effectiveaddress32(void *cpu, uint8_t modrm, uint8_t sib, uint32
                 vaddr += imm;
 
             if (mod)
-                vaddr += x86_rdreg32(cpu, EBP);
+                vaddr += x86_readR32(cpu, EBP);
         } else {
             if (index != 0b100)
-                vaddr = x86_rdmem32(cpu, x86_rdreg32(cpu, index) * ss_factor);
-            vaddr += x86_rdreg32(cpu, base);
+                vaddr = x86_readM32(cpu, x86_readR32(cpu, index) * ss_factor);
+            vaddr += x86_readR32(cpu, base);
 
             if (mod == 1)
                 vaddr += lsb(imm);

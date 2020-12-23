@@ -25,9 +25,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "../system.h"
+
 #define TABLE_0F_PREFIX_MASK 5
 
 struct exec_data {
+    uint8_t bytes;
     uint8_t ext;    // extension used to get this instruction
     uint8_t sec;    // secondary opcode used
     uint8_t opc;    // opcode used
@@ -51,6 +54,7 @@ typedef void (*d_x86_instruction_handler)(void *, struct exec_data);
 struct instruction {
     const char *name;
     d_x86_instruction_handler handler;
+    moffset32_t eip;
     int encoding;
     struct exec_data data;
     uint8_t fail_to_fetch;

@@ -377,6 +377,31 @@ struct symbol_lookup_record sr_lookup(sym_resolver_t *resolver, moffset32_t vadd
 
     off_in_zone = moffset16(vaddr) - moffset16(zone->mz_base);
 
+
+    // the symbol might start in a page but continue in another
+    // in this case we need to loop back till we find the symbol
+    if (off_in_zone < zone->mz_low[0].r_offset) {
+
+        if (zone_idx == 0)
+            return (struct symbol_lookup_record){NULL, 0, 0};
+
+        while (region->mr_zones[--zone_idx].mz_nrecords == 0) {
+            if (!zone_idx)
+                break;
+        }
+
+        if (region->mr_zones[zone_idx].mz_nrecords == 0)
+            return (struct symbol_lookup_record){NULL, 0, 0};
+
+        // now get the last symbol
+        zone = &region->mr_zones[zone_idx];
+        symbol = zone->mz_low[zone->mz_nrecords-1].r_sym;
+        if (!symbol->fr_sym)
+            fetch_symbolname(resolver, symbol);
+
+        return (struct symbol_lookup_record){symbol->fr_sym, symbol->fr_start, symbol->fr_size};
+    }
+
     if (conf_resolver_debug_mode_dump_zone)
         dump_zone(resolver, zone, zone_idx);
 
@@ -393,7 +418,7 @@ struct symbol_lookup_record sr_lookup(sym_resolver_t *resolver, moffset32_t vadd
             if (!symbol->fr_sym)
                 fetch_symbolname(resolver, symbol);
 
-            return (struct symbol_lookup_record){symbol->fr_sym, symbol->fr_start, rec->r_end};
+            return (struct symbol_lookup_record){symbol->fr_sym, symbol->fr_start, symbol->fr_size};
         }
 
 
@@ -409,9 +434,6 @@ struct symbol_lookup_record sr_lookup(sym_resolver_t *resolver, moffset32_t vadd
     }
 
     for (size_t i = 0; i < max; i++) {
-
-        if (vaddr == 0x0804a7f7 || vaddr == 0x0804a7fa)
-            s_info("%08x %08x", records[i].r_offset, records[i].r_end);
 
         if (symbol && off_in_zone < records[i].r_offset)
             break;
@@ -432,7 +454,7 @@ struct symbol_lookup_record sr_lookup(sym_resolver_t *resolver, moffset32_t vadd
     if (conf_resolver_debug_mode_dump_strtab)
         dump_strtab(resolver);
 
-    return (struct symbol_lookup_record){symbol->fr_sym, symbol->fr_start, symbol->fr_start + symbol->fr_size};
+    return (struct symbol_lookup_record){symbol->fr_sym, symbol->fr_start, symbol->fr_size};
 
 }
 
