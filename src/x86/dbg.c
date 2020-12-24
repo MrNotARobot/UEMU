@@ -366,9 +366,6 @@ void x86dbg_print_state(x86CPU *cpu)
             break;
         }
 
-        if (eip == backtrace.st_end)
-            break;
-
         if (i == 0)
             first_instruction_size = ins.size;
 
@@ -463,6 +460,9 @@ void x86dbg_print_state(x86CPU *cpu)
             backtrace = tracer_get_backtrace(x86_tracer(cpu), backtrace_size-1);
             eip = backtrace.st_start + backtrace.st_rel;
         }
+
+        if (eip == backtrace.st_end)
+            break;
     }
 
     s_info("%s───[x86]───────────────────────────────────────────────────[ STACK ]────────────────────────────────────────────────────\033[0m", conf_x86dbg_separator_colorcode);

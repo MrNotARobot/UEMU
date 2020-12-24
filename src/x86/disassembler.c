@@ -134,12 +134,6 @@ static char *modrm2str(uint8_t modrm, uint8_t sib, uint32_t imm, int oprnd_size)
 
         xfree(displacement);
     } else {
-        char *scaledindex;
-
-        if (index == 0b100)
-            scaledindex = xstrdup("");
-        else
-            scaledindex = strcatall(6, operand_color, scaleregister, "\033[0m*", num_color, scale, "\033[0m + "); // reg*scale
 
         s = strcatall(5, "[", scaledindex, operand_color, regstr, "\033[0m]");
 
@@ -196,6 +190,7 @@ char *x86_disassemble(x86CPU *cpu, struct instruction ins)
                 s = strcatall(7, mnemonic, conf_disassm_symbol_colorcode, lookup.sl_name, "\033[0m <", conf_disassm_code_address_colorcode, target, "\033[0m>");
             }
 
+            xfree(mnemonic);
             xfree(rel);
             xfree(target);
             return s;
@@ -411,9 +406,9 @@ char *x86_disassemble(x86CPU *cpu, struct instruction ins)
     }
 
     xfree(mnemonic);
-
     xfree(temp);
     xfree(arg);
+    xfree(immediate);
 
     return s;
 }
