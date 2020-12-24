@@ -26,12 +26,12 @@
 #include <string.h>
 #include <ctype.h>
 
+#include "../memory.h"
+#include "../system.h"
+
 #include "cpu.h"
 #include "dbg.h"
 #include "disassembler.h"
-
-#include "../system.h"
-#include "../memory.h"
 
 static uint32_t readMx(x86CPU *cpu, moffset32_t vaddr, int size, _Bool);
 static void writeMx(x86CPU *cpu, moffset32_t vaddr, uint32_t src, int size);
@@ -54,11 +54,11 @@ void x86_startcpu(x86CPU *cpu)
 
     cpu->CS = 0; cpu->SS = 0; cpu->DS = 0; cpu->ES = 0; cpu->FS = 0; cpu->GS = 0;
 
-    cpu->eflags.f_AC = 0; cpu->eflags.f_VM = 0; cpu->eflags.f_RF = 0;
-    cpu->eflags.f_NT = 0; cpu->eflags.f_IOPL = 0; cpu->eflags.f_OF = 0;
-    cpu->eflags.f_DF = 0; cpu->eflags.f_IF = 0; cpu->eflags.f_TF = 0;
-    cpu->eflags.f_SF = 0; cpu->eflags.f_ZF = 0; cpu->eflags.f_AF = 0;
-    cpu->eflags.f_PF = 0; cpu->eflags.f_CF = 0;
+    cpu->eflags.AC = 0; cpu->eflags.VM = 0; cpu->eflags.RF = 0;
+    cpu->eflags.NT = 0; cpu->eflags.IOPL = 0; cpu->eflags.OF = 0;
+    cpu->eflags.DF = 0; cpu->eflags.IF = 0; cpu->eflags.TF = 0;
+    cpu->eflags.SF = 0; cpu->eflags.ZF = 0; cpu->eflags.AF = 0;
+    cpu->eflags.PF = 0; cpu->eflags.CF = 0;
 
     cpu->eflags_ptr_ = &cpu->eflags;
 
@@ -474,6 +474,86 @@ uint32_t x86_readR32(x86CPU *cpu, uint8_t register32)
         case EBP: return cpu ->EBP;
         case EDI: return cpu ->EDI;
         case ESI: return cpu ->ESI;
+    }
+
+    return 0;
+}
+
+void x86_setflag(x86CPU *cpu, uint8_t flag)
+{
+    switch (flag) {
+        case ID: cpu->eflags.ID = 1; break;
+        case VIP: cpu->eflags.VIP = 1; break;
+        case VIF: cpu->eflags.VIF = 1; break;
+        case AC: cpu->eflags.AC = 1; break;
+        case VM: cpu->eflags.VM = 1; break;
+        case RF: cpu->eflags.RF = 1; break;
+        case NT: cpu->eflags.NT = 1; break;
+        case IOPL: cpu->eflags.IOPL = 1; break;
+        case DF: cpu->eflags.DF = 1; break;
+        case IF: cpu->eflags.IF = 1; break;
+        case TF: cpu->eflags.TF = 1; break;
+        case SF: cpu->eflags.SF = 1; break;
+        case ZF: cpu->eflags.ZF = 1; break;
+        case AF: cpu->eflags.AF = 1; break;
+        case PF: cpu->eflags.PF = 1; break;
+        case CF: cpu->eflags.CF = 1; break;
+            break;
+    }
+
+    tracer_setptr(x86_tracer(cpu), TRACE_VARPTR_EFLAGS, &cpu->eflags);
+}
+
+void x86_clearflag(x86CPU *cpu, uint8_t flag)
+{
+    switch (flag) {
+        case ID: cpu->eflags.ID = 0; break;
+        case VIP: cpu->eflags.VIP = 0; break;
+        case VIF: cpu->eflags.VIF = 0; break;
+        case AC: cpu->eflags.AC = 0; break;
+        case VM: cpu->eflags.VM = 0; break;
+        case RF: cpu->eflags.RF = 0; break;
+        case NT: cpu->eflags.NT = 0; break;
+        case IOPL: cpu->eflags.IOPL = 0; break;
+        case DF: cpu->eflags.DF = 0; break;
+        case IF: cpu->eflags.IF = 0; break;
+        case TF: cpu->eflags.TF = 0; break;
+        case SF: cpu->eflags.SF = 0; break;
+        case ZF: cpu->eflags.ZF = 0; break;
+        case AF: cpu->eflags.AF = 0; break;
+        case PF: cpu->eflags.PF = 0; break;
+        case CF: cpu->eflags.CF = 0; break;
+        break;
+    }
+
+    tracer_setptr(x86_tracer(cpu), TRACE_VARPTR_EFLAGS, &cpu->eflags);
+}
+
+_Bool x86_flag_on(x86CPU *cpu, uint8_t flag)
+{
+    return !x86_flag_off(cpu, flag);
+}
+
+_Bool x86_flag_off(x86CPU *cpu, uint8_t flag)
+{
+    switch (flag) {
+        case ID: return  cpu->eflags.ID == 0; break;
+        case VIP: return  cpu->eflags.VIP == 0; break;
+        case VIF: return  cpu->eflags.VIF == 0; break;
+        case AC: return  cpu->eflags.AC == 0; break;
+        case VM: return  cpu->eflags.VM == 0; break;
+        case RF: return  cpu->eflags.RF == 0; break;
+        case NT: return  cpu->eflags.NT == 0; break;
+        case IOPL: return  cpu->eflags.IOPL == 0; break;
+        case DF: return  cpu->eflags.DF == 0; break;
+        case IF: return  cpu->eflags.IF == 0; break;
+        case TF: return  cpu->eflags.TF == 0; break;
+        case SF: return  cpu->eflags.SF == 0; break;
+        case ZF: return  cpu->eflags.ZF == 0; break;
+        case AF: return  cpu->eflags.AF == 0; break;
+        case PF: return  cpu->eflags.PF == 0; break;
+        case CF: return  cpu->eflags.CF == 0; break;
+        break;
     }
 
     return 0;

@@ -22,14 +22,14 @@
  *      x86 instructions as is described in the intel manual vol. 2.
  */
 
-#include "instructions.h"
+#include "../system.h"
 
-#include "general-purpose.h"
+#include "instructions.h"
 
 #include "cpu.h"
 #include "x86-utils.h"
-#include "../system.h"
 #include "disassembler.h"
+#include "general-purpose.h"
 
 
 void x86_aaa(void *cpu, struct exec_data data)
@@ -2322,7 +2322,7 @@ void x86_iret(void *cpu, struct exec_data data)
 void x86_mm_jcc(void *cpu, struct exec_data data)
 {
     _Bool condition_is_true = 0;
-    reg32_t jump_target = x86_findbranchtarget(cpu, data);
+    reg32_t jump_target = x86_findbranchtarget_relative(cpu, x86_readR32(cpu, EIP) - data.bytes, data);
     if (data.lock)
         x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
 
@@ -2403,7 +2403,7 @@ void x86_mm_jcc(void *cpu, struct exec_data data)
     }
 
     if (condition_is_true)
-        x86_writeR32(cpu, EIP, jump_target);
+        x86_update_eip_absolute(cpu, jump_target);
 }
 
 
@@ -2512,14 +2512,15 @@ void x86_mm_lea(void *cpu, struct exec_data data)
     if (data.lock)
         x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
 
-    if (data.adrsz_pfx && data.oprsz_pfx)
+    if (data.adrsz_pfx && data.oprsz_pfx) {
         x86__mm_r16_m_lea(cpu, reg(data.modrm), x86_effectiveaddress16(cpu, data.modrm, data.moffset));
-    else if (data.oprsz_pfx)
+    } else if (data.oprsz_pfx) {
         x86__mm_r16_m_lea(cpu, reg(data.modrm), moffset16(x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset)));
-    else if (data.adrsz_pfx)
+    } else if (data.adrsz_pfx) {
         x86__mm_r32_m_lea(cpu, reg(data.modrm), zeroxtnd16(x86_effectiveaddress16(cpu, data.modrm, data.moffset)));
-    else
+    } else {
         x86__mm_r32_m_lea(cpu, reg(data.modrm), x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset));
+    }
 }
 
 

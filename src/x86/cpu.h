@@ -139,15 +139,14 @@ uint8_t x86_readR8(x86CPU *, uint8_t);
 uint16_t x86_readR16(x86CPU *, uint8_t);
 uint32_t x86_readR32(x86CPU *, uint8_t);
 
+void x86_setflag(x86CPU *, uint8_t);
+void x86_clearflag(x86CPU *, uint8_t);
+_Bool x86_flag_on(x86CPU *, uint8_t);
+_Bool x86_flag_off(x86CPU *, uint8_t);
+
 
 #define x86_rdsreg(cpu, reg) *(    ((x86CPU *)(cpu))->sreg_table_[reg]    )
 
 #define x86_wrsreg(cpu, reg, val) (    *(((x86CPU *)(cpu))->sreg_table_[reg]) = (val)    )
-
-#define x86_setflag(cpu, flag) (  ((x86CPU *)(cpu))->eflags_ptr_->f_ ## flag = 1  )
-#define x86_clearflag(cpu, flag) (  ((x86CPU *)(cpu))->eflags_ptr_->f_ ## flag = 0  )
-
-#define x86_flag_on(cpu, flag) (   ((x86CPU *)(cpu))->eflags.f_ ## flag == 1 )
-#define x86_flag_off(cpu, flag) (   ((x86CPU *)(cpu))->eflags.f_ ## flag == 0 )
 
 #endif /* CPU_H */

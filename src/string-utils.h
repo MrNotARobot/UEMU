@@ -1,4 +1,5 @@
 /* Copyright (c) 2020 Gabriel Manoel
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
@@ -16,33 +17,16 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- *
- * DESCRIPTION: Main program loop.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
+#ifndef STRING_UTILS_H
+#define STRING_UTILS_H
 
-#include "x86/cpu.h"
-#include "system.h"
+#include "types.h"
 
-int main(int argc, char **argv, char **envp)
-{
-    char *executable, *program_name;
+char *coolstrcat(char *, size_t, ...);
+char *strcatall(size_t, ...);
+char *int2hexstr(uint32_t, uint8_t);
+char *int2str(uint32_t);
 
-    if (argc < 2) {
-        printf("usage: uemu <program>\n");
-        exit(0);
-    }
-
-    program_name = argv[1];
-    executable = realpath(argv[1], NULL);
-
-    /* realpath(3) did not get the full pathname. Search through PATH. */
-    if (!executable)
-        executable = find_executable(program_name);
-
-    x86_cpu_exec(executable, argc, argv, envp);
-
-    ASSERT_NOTREACHED();
-}
+#endif /* STRING_UTILS_H */

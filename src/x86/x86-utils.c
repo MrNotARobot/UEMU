@@ -19,8 +19,6 @@
  * SOFTWARE.
  */
 
-#include "../system.h"
-
 #include "x86-utils.h"
 
 #include "cpu.h"
@@ -325,14 +323,15 @@ moffset32_t x86_effectiveaddress32(void *cpu, uint8_t modrm, uint8_t sib, uint32
             if (mod)
                 vaddr += x86_readR32(cpu, EBP);
         } else {
-            if (index != 0b100)
-                vaddr = x86_readM32(cpu, x86_readR32(cpu, index) * ss_factor);
-            vaddr += x86_readR32(cpu, base);
-
+            vaddr = x86_readR32(cpu, base);
             if (mod == 1)
                 vaddr += lsb(imm);
             else if (mod == 2)
                 vaddr += imm;
+
+            if (index != 0b100)
+                vaddr = vaddr + x86_readR32(cpu, index) * ss_factor;
+
         }
 
     }

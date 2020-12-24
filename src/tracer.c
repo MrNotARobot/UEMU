@@ -25,7 +25,6 @@
 #include <string.h>
 
 #include "tracer.h"
-#include "system.h"
 
 #include "memory.h"
 

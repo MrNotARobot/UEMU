@@ -21,8 +21,6 @@
  * DESCRIPTION:
  *  simulate memory management.
  */
-#include "../system.h"
-
 #include <stdio.h>
 #include <stdarg.h>
 #include <sys/mman.h>

@@ -1,4 +1,5 @@
 /* Copyright (c) 2020 Gabriel Manoel
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
@@ -16,33 +17,67 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- *
- * DESCRIPTION: Main program loop.
  */
 
 #include <stdio.h>
-#include <stdlib.h>
+#include <stdarg.h>
+#include <string.h>
 
-#include "x86/cpu.h"
-#include "system.h"
+#include "string-utils.h"
 
-int main(int argc, char **argv, char **envp)
+#include "memory.h"
+
+char *coolstrcat(char *dest, size_t argc, ...)
 {
-    char *executable, *program_name;
+    va_list ap;
 
-    if (argc < 2) {
-        printf("usage: uemu <program>\n");
-        exit(0);
-    }
+    va_start(ap, argc);
+    for (size_t i = 0; i < argc; i++)
+        strcat(dest, va_arg(ap, const char *));
+    va_end(ap);
 
-    program_name = argv[1];
-    executable = realpath(argv[1], NULL);
+    return dest;
+}
 
-    /* realpath(3) did not get the full pathname. Search through PATH. */
-    if (!executable)
-        executable = find_executable(program_name);
+char *strcatall(size_t argc, ...)
+{
+    va_list ap;
+    char *s;
+    size_t size = 0;
 
-    x86_cpu_exec(executable, argc, argv, envp);
+    va_start(ap, argc);
+    for (size_t i = 0; i < argc; i++)
+        size += strlen(va_arg(ap, const char *));
+    va_end(ap);
 
-    ASSERT_NOTREACHED();
+    s = xcalloc(size + 1, sizeof(*s));
+
+    va_start(ap, argc);
+    for (size_t i = 0; i < argc; i++)
+        strcat(s, va_arg(ap, const char *));
+    va_end(ap);
+
+    return s;
+}
+
+
+char *int2hexstr(uint32_t n, uint8_t padding)
+{
+    char *s = xcalloc(12, sizeof(*s));  // 0xdeadbeef = 10 characters + null byte
+    if (padding > 8)
+        padding = 8;
+
+    snprintf(s, 11, "0x%0*x", padding, n);
+    return s;
+}
+
+char *int2str(uint32_t n)
+{
+    char *s = xcalloc(15, sizeof(*s));  // should be big enough for UINT32_MAX
+
+    if (!n)
+        return xstrdup("0");
+
+    snprintf(s, 10, "%d", n);
+    return s;
 }

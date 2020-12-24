@@ -25,7 +25,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "../system.h"
+#include "../types.h"
 
 #define TABLE_0F_PREFIX_MASK 5
 

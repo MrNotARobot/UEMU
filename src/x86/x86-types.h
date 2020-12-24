@@ -23,24 +23,28 @@
 #ifndef X86_TYPES_H
 #define X86_TYPES_H
 
+enum EFlagsRegisterFlags {
+    ID, VIP, VIF, AC, VM, RF, NT, IOPL, OF, DF, IF, TF, SF, ZF, AF, PF, CF
+};
+
 struct EFlags {
-    unsigned int f_ID : 1;
-    unsigned int f_VIP : 1;
-    unsigned int f_VIF : 1;
-    unsigned int f_AC : 1;
-    unsigned int f_VM : 1;
-    unsigned int f_RF : 1;
-    unsigned int f_NT : 1;
-    unsigned int f_IOPL : 2;
-    unsigned int f_OF : 1;
-    unsigned int f_DF : 1;
-    unsigned int f_IF : 1;
-    unsigned int f_TF : 1;
-    unsigned int f_SF : 1;
-    unsigned int f_ZF : 1;
-    unsigned int f_AF : 1;
-    unsigned int f_PF : 1;
-    unsigned int f_CF : 1;
+    unsigned int ID : 1;
+    unsigned int VIP : 1;
+    unsigned int VIF : 1;
+    unsigned int AC : 1;
+    unsigned int VM : 1;
+    unsigned int RF : 1;
+    unsigned int NT : 1;
+    unsigned int IOPL : 2;
+    unsigned int OF : 1;
+    unsigned int DF : 1;
+    unsigned int IF : 1;
+    unsigned int TF : 1;
+    unsigned int SF : 1;
+    unsigned int ZF : 1;
+    unsigned int AF : 1;
+    unsigned int PF : 1;
+    unsigned int CF : 1;
 };
 
 

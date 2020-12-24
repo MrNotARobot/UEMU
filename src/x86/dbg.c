@@ -22,12 +22,15 @@
 #include <ctype.h>
 #include <string.h>
 
-#include "dbg.h"
-
-#include "../tracer.h"
-#include "../system.h"
 #include "../memory.h"
+#include "../system.h"
+#include "../string-utils.h"
+#include "../tracer.h"
+
+#include "dbg.h"
 #include "disassembler.h"
+
+static _Bool branch_is_taken(struct exec_data, struct EFlags, reg32_t);
 
 static char *disassembleptr(x86CPU *, moffset32_t);
 static _Bool ptr_has_string(x86CPU *, moffset32_t);
@@ -47,6 +50,84 @@ static uint8_t conf_x86dbg_max_stack_entries = 8;
 static uint8_t conf_x86dbg_disassemble_entries = 11;
 
 static moffset32_t p_start_disassemble_here = 0;
+
+static _Bool branch_is_taken(struct exec_data data, struct EFlags eflags, reg32_t ecx)
+{
+    switch (data.opc) {
+        case 0x87:  // JA rel32     rel16
+        case 0x77:  // JA rel8
+            return (!eflags.CF) && !eflags.ZF;
+            break;
+        case 0x83:  // JAE rel32    rel16
+        case 0x73:  // JAE rel8
+            return !eflags.CF;
+            break;
+        case 0x82:  // JB rel32     rel16
+        case 0x72:  // JB rel8
+            return eflags.CF;
+            break;
+        case 0x86:  // JBE rel32    rel16
+        case 0x76:  // JBE rel8
+            return eflags.CF || eflags.ZF;
+            break;
+        case 0xE3:  // JCXZ rel8
+            if (data.adrsz_pfx)
+                return !(ecx & 0x0000FFFF);
+            else
+                return !ecx;
+            break;
+        case 0x84:  // JE rel32     rel16
+        case 0x74:  // JE rel8
+            return eflags.ZF;
+            break;
+        case 0x8F:  // JG rel32     rel16
+        case 0x7F:  // JG rel7
+            return !eflags.ZF && !eflags.SF;
+            break;
+        case 0x8D:  // JGE rel32    rel16
+        case 0x7D:  // JGE rel8
+            return !eflags.SF;
+            break;
+        case 0x8C:  // JL rel32     rel16
+        case 0x7C:  // JL rel8
+            return (eflags.SF && !eflags.OF) || (!eflags.SF && eflags.OF);
+            break;
+        case 0x8E:  // JLE rel32     rel16
+        case 0x7E:  // JLE rel8
+            return eflags.ZF || (eflags.SF && !eflags.OF) || (!eflags.SF && eflags.OF);
+            break;
+        case 0x85:  // JNE rel32     rel16
+        case 0x75:  // JNE rel8
+            return !eflags.ZF;
+            break;
+        case 0x81:  // JNO rel32     rel16
+        case 0x71:  // JNO rel8
+            return !eflags.OF;
+            break;
+        case 0x8B:  // JNP rel32     rel16
+        case 0x7B:  // JNP rel8
+            return !eflags.PF;
+            break;
+        case 0x89:  // JNS rel32     rel16
+        case 0x79:  // JNS rel8
+            return !eflags.SF;
+            break;
+        case 0x80:  // JO rel32     rel16
+        case 0x70:  // JO rel8
+            return eflags.OF;
+            break;
+        case 0x8A:  // JP rel32     rel16
+        case 0x7A:  // JPE rel8
+            return eflags.PF;
+            break;
+        case 0x88:  // JS rel32     rel16
+        case 0x78:  // JS rel8
+            return eflags.SF;
+            break;
+    }
+
+    return 0;
+}
 
 
 static _Bool ptr_has_string(x86CPU *cpu, moffset32_t vaddr)
@@ -75,29 +156,31 @@ static char *disassembleptr(x86CPU *cpu, moffset32_t vaddr)
     const char *codecolor = conf_x86dbg_code_colorcode;
 
     // it will create a string in this format:  0xdeadbeef <main+123> ◀- pop EDI
-    if (func.sl_start) {
 
-        addrstr = int2hexstr(vaddr, 8);
+    addrstr = int2hexstr(vaddr, 8);
 
-        // do we add the offset?
-        if (vaddr - func.sl_start)
-            functrel = int2str(vaddr - func.sl_start);
+    // do we add the offset?
+    if (vaddr - func.sl_start)
+        functrel = int2str(vaddr - func.sl_start);
 
-        // get the instruction
-        ins = x86_decode(cpu, vaddr);
+    // get the instruction
+    ins = x86_decode(cpu, vaddr);
 
-        // disassemble the instruction
-        disasstr = x86_disassemble(cpu, ins);
+    // disassemble the instruction
+    disasstr = x86_disassemble(cpu, ins);
 
-        if (functrel)
-            s = strcatall(11, codecolor, addrstr, " <", func.sl_name, "+", functrel, ">", arrow_l, " ", disasstr, "\033[0m");
-        else
-            s = strcatall(9, codecolor, addrstr, " <", func.sl_name, ">", arrow_l, " ", disasstr, "\033[0m");
-
-        xfree(functrel);
-        xfree(addrstr);
-        xfree(disasstr);
+    if (!func.sl_name) {
+        s = strcatall(6, codecolor, addrstr, arrow_l, " ", disasstr, "\033[0m");
+    } else if (functrel) {
+        s = strcatall(11, codecolor, addrstr, " <", func.sl_name, "+", functrel, ">", arrow_l, " ", disasstr, "\033[0m");
+    } else {
+        s = strcatall(9, codecolor, addrstr, " <", func.sl_name, ">", arrow_l, " ", disasstr, "\033[0m");
     }
+
+
+    xfree(functrel);
+    xfree(addrstr);
+    xfree(disasstr);
 
         return s;
 }
@@ -155,7 +238,9 @@ static char *getptrcontent(x86CPU *cpu, moffset32_t vaddr)
             ptrstr = int2hexstr(ptr, 8);
             struct symbol_lookup_record symbol = sr_lookup(x86_resolver(cpu), ptr);
 
-            if (ptr == vaddr)
+            if (!symbol.sl_name)
+                s = strcatall(4, s, data_color, ptrstr, "\033[0m");
+            else if (ptr == vaddr)
                 s = strcatall(7, s, data_color, ptrstr, " <", symbol.sl_name, ">", "\033[0m");
             else
                 s = strcatall(7, s, arrow_r, data_color, ptrstr, " <", symbol.sl_name, ">", "\033[0m");
@@ -209,15 +294,15 @@ static void print_register(x86CPU *cpu, const char *name, reg32_t value)
 static void print_eflags(traced_registers_t registers)
 {
     s_info("\033[1mEFLAGS  \033[0m[ %s %s %s %s %s %s %s %s %s ]",
-            registers.eflags.f_OF ? "\033[1;32mOF\033[0m" : "\033[1;90mOF\033[0m",
-            registers.eflags.f_DF ? "\033[1;32mDF\033[0m" : "\033[1;90mDF\033[0m",
-            registers.eflags.f_IF ? "\033[1;32mIF\033[0m" : "\033[1;90mIF\033[0m",
-            registers.eflags.f_TF ? "\033[1;32mTF\033[0m" : "\033[1;90mTF\033[0m",
-            registers.eflags.f_SF ? "\033[1;32mSF\033[0m" : "\033[1;90mSF\033[0m",
-            registers.eflags.f_ZF ? "\033[1;32mZF\033[0m" : "\033[1;90mZF\033[0m",
-            registers.eflags.f_AF ? "\033[1;32mAF\033[0m" : "\033[1;90mAF\033[0m",
-            registers.eflags.f_PF ? "\033[1;32mPF\033[0m" : "\033[1;90mPF\033[0m",
-            registers.eflags.f_CF ? "\033[1;32mCF\033[0m" : "\033[1;90mCF\033[0m"
+            registers.eflags.OF ? "\033[1;32mOF\033[0m" : "\033[1;90mOF\033[0m",
+            registers.eflags.DF ? "\033[1;32mDF\033[0m" : "\033[1;90mDF\033[0m",
+            registers.eflags.IF ? "\033[1;32mIF\033[0m" : "\033[1;90mIF\033[0m",
+            registers.eflags.TF ? "\033[1;32mTF\033[0m" : "\033[1;90mTF\033[0m",
+            registers.eflags.SF ? "\033[1;32mSF\033[0m" : "\033[1;90mSF\033[0m",
+            registers.eflags.ZF ? "\033[1;32mZF\033[0m" : "\033[1;90mZF\033[0m",
+            registers.eflags.AF ? "\033[1;32mAF\033[0m" : "\033[1;90mAF\033[0m",
+            registers.eflags.PF ? "\033[1;32mPF\033[0m" : "\033[1;90mPF\033[0m",
+            registers.eflags.CF ? "\033[1;32mCF\033[0m" : "\033[1;90mCF\033[0m"
             );
 }
 
@@ -339,15 +424,19 @@ void x86dbg_print_state(x86CPU *cpu)
 
         }
 
-        if (ins.handler == x86_mm_call || ins.handler == x86_mm_jcc)
-            s_info(" ");
-
         xfree(temp);
         xfree(symbolname);
         xfree(disassembled);
         eip += ins.size;
 
-        if (ins.handler == x86_mm_ret && backtrace_size) {
+        if ((eip - ins.size) == registers.eip && ins.handler == x86_mm_jcc) {
+            if (branch_is_taken(ins.data, registers.eflags, registers.ecx)) {
+                eip = x86_findbranchtarget_relative(cpu, ins.eip, ins.data);
+                s_info("        \033[1m↓\033[0m");
+            }
+        } else if (ins.handler == x86_mm_call || ins.handler == x86_mm_jcc) {
+            s_info(" ");
+        } else if (ins.handler == x86_mm_ret && backtrace_size) {
             s_info("        \033[1m↓\033[0m");
             backtrace = tracer_get_backtrace(x86_tracer(cpu), backtrace_size-1);
             eip = backtrace.st_start + backtrace.st_rel;

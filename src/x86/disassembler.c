@@ -28,6 +28,7 @@
 
 #include "../memory.h"
 #include "../system.h"
+#include "../string-utils.h"
 
 #include "disassembler.h"
 
@@ -53,45 +54,43 @@ static char *modrm2str(uint8_t modrm, uint8_t sib, uint32_t imm, int oprnd_size)
     uint8_t base = sibbase(sib);
     char *regstr = NULL;
     char *scaleregister = NULL;
+    char *scaledindex;
     const char *scale = "";
     char *s = NULL;
-    char *temp = NULL;
+    const char *operand_color = conf_disassm_operand_colorcode;
+    const char *num_color = conf_disassm_number_colorcode;
 
     if (mod == 0) {
         if (rm != 0b100) {
             if (rm == 0b101) {
                 char *immediate = int2hexstr(imm, 0);
-                s = strcatall(4, "[", conf_disassm_number_colorcode, immediate, "\033[0m]");
+                s = strcatall(4, "[", num_color, immediate, "\033[0m]");
                 xfree(immediate);
                 return s;
             }
 
-            return strcatall(4, "[", conf_disassm_operand_colorcode, stringfyregister(rm, 32), "\033[0m]");
+            return strcatall(4, "[", operand_color, stringfyregister(rm, 32), "\033[0m]");
         }
     } else if (mod == 1 || mod == 2) {
 
         if (rm != 0b100) {
             char *immediate = int2hexstr(imm, 0);
-            s = strcatall(7, "[", conf_disassm_operand_colorcode, stringfyregister(rm, 32), "\033[0m + ", conf_disassm_number_colorcode, immediate, "\033[0m]");
+            s = strcatall(7, "[", operand_color, stringfyregister(rm, 32), "\033[0m + ", num_color, immediate, "\033[0m]");
             xfree(immediate);
             return s;
         }
     } else {
             if (oprnd_size == 8)
-                return strcatall(3, conf_disassm_operand_colorcode, stringfyregister(reg32to8(rm), oprnd_size), "\033[0m");
-        return strcatall(3, conf_disassm_operand_colorcode, stringfyregister(rm, oprnd_size), "\033[0m");
+                return strcatall(3, operand_color, stringfyregister(reg32to8(rm), oprnd_size), "\033[0m");
+        return strcatall(3, operand_color, stringfyregister(rm, oprnd_size), "\033[0m");
     }
 
     switch (base) {
         case 0b101:
-            if (mod == 0) {
-                temp = int2hexstr(imm, 8);
-                regstr = strcatall(3, conf_disassm_number_colorcode, temp, "\033[0m");
-                xfree(temp);
-            } else {
+            if (mod == 0)
+                regstr = int2hexstr(imm, 8);
+            else
                 regstr = xstrdup("ebp");
-            }
-
             break;
         case 0b000:
         case 0b001:
@@ -115,27 +114,38 @@ static char *modrm2str(uint8_t modrm, uint8_t sib, uint32_t imm, int oprnd_size)
         case 0b111: scaleregister = "edi"; break;
     }
 
-    if (ss_factor == 0b00)
-        scale = "";
-    else if (ss_factor == 0b01)
+    if (ss_factor == 0b01)
         scale = "2";
     else if (ss_factor == 0b10)
         scale = "4";
     else if (ss_factor == 0b10)
         scale = "8";
 
+    if (index == 0b100)
+        scaledindex = xstrdup("");
+    else
+        scaledindex = strcatall(6, operand_color, scaleregister, "\033[0m*", num_color, scale, "\033[0m + "); // reg*scale
+
+
     if (mod == 1 || mod == 2) {
         char *displacement = int2hexstr(imm, 0);
 
-        if (index != 0b100)
-            s = strcatall(13, "[", conf_disassm_operand_colorcode, scaleregister, "\033[0m*", conf_disassm_number_colorcode, scale, "\033[0m + ", conf_disassm_operand_colorcode,  regstr, "\033[0m + ", conf_disassm_number_colorcode, displacement, "\033[0m]");
-        else
-            s = strcatall(7, "[", conf_disassm_operand_colorcode,  regstr, "\033[0m + ", conf_disassm_number_colorcode, displacement, "\033[0m]");
+        s = strcatall(8, "[", scaledindex, operand_color, regstr, "\033[0m + ", num_color,  displacement, "\033[0m]");
+
         xfree(displacement);
     } else {
-        s = strcatall(10, "[", conf_disassm_operand_colorcode, scaleregister, "\033[0m*", conf_disassm_number_colorcode, scale, "\033[0m + ", conf_disassm_operand_colorcode,  regstr, "\033[0m]");
+        char *scaledindex;
+
+        if (index == 0b100)
+            scaledindex = xstrdup("");
+        else
+            scaledindex = strcatall(6, operand_color, scaleregister, "\033[0m*", num_color, scale, "\033[0m + "); // reg*scale
+
+        s = strcatall(5, "[", scaledindex, operand_color, regstr, "\033[0m]");
+
     }
 
+    xfree(scaledindex);
     xfree(regstr);
 
     return s;
@@ -786,7 +796,7 @@ struct instruction x86_decode(x86CPU *cpu, moffset32_t eip)
     return ins;
 }
 
-moffset32_t x86_findbranchtarget_relative(x86CPU * cpu, moffset32_t eip, struct exec_data data)
+moffset32_t x86_findbranchtarget_relative(x86CPU *cpu, moffset32_t eip, struct exec_data data)
 {
     moffset32_t effctvaddr;
 
@@ -816,7 +826,7 @@ moffset32_t x86_findbranchtarget_relative(x86CPU * cpu, moffset32_t eip, struct 
         case 0x70:  // JO rel8
         case 0x7A:  // JPE rel8
         case 0x78:  // JS rel8
-            return eip + data.bytes + lsb(data.imm1);
+            return eip + data.bytes + sign8to32(data.imm1);
         case 0x80:  // JO rel32     rel16
         case 0x81:  // JNO rel32     rel16
         case 0x82:  // JB rel32     rel16

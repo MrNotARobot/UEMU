@@ -380,7 +380,7 @@ struct symbol_lookup_record sr_lookup(sym_resolver_t *resolver, moffset32_t vadd
 
     // the symbol might start in a page but continue in another
     // in this case we need to loop back till we find the symbol
-    if (off_in_zone < zone->mz_low[0].r_offset) {
+    if (!zone->mz_low || off_in_zone < zone->mz_low[0].r_offset) {
 
         if (zone_idx == 0)
             return (struct symbol_lookup_record){NULL, 0, 0};

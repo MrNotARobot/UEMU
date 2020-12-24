@@ -22,7 +22,7 @@
 #ifndef X86_UTILS_H
 #define X86_UTILS_H
 
-#include "x86-mmu.h"
+#include "../types.h"
 
 enum x86Registers {
     EAX = 0, AX = EAX,

@@ -619,8 +619,6 @@ uint32_t x86__mm_r32_m32_and(void *cpu, uint8_t reg, moffset32_t vaddr, _Bool lo
     return x86__mm_rX_immX_and(cpu, reg, x86_readM32(cpu, vaddr), 32);
 }
 
-#include "../system.h"
-
 // CALL
 static void x86__mm_abs_call(void *, moffset32_t);
 
@@ -1295,8 +1293,6 @@ static uint32_t x86__mm_mX_immX_locked_sub(void *cpu, moffset32_t vaddr, uint32_
 
     return result;
 }
-
-#include "../system.h"
 
 static uint32_t x86__mm_rX_immX_sub(void *cpu, uint8_t dest, uint32_t imm, size_t size)
 {

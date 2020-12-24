@@ -23,12 +23,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
 #include <string.h>
-#include <errno.h>
 #include <unistd.h>
+#include <stdarg.h>
 
 #include "system.h"
+
 #include "memory.h"
 
 
@@ -81,61 +81,6 @@ char *find_executable(const char *name)
 
     xfree(path);
     return fullpath;
-}
-
-char *coolstrcat(char *dest, size_t argc, ...)
-{
-    va_list ap;
-
-    va_start(ap, argc);
-    for (size_t i = 0; i < argc; i++)
-        strcat(dest, va_arg(ap, const char *));
-    va_end(ap);
-
-    return dest;
-}
-
-char *strcatall(size_t argc, ...)
-{
-    va_list ap;
-    char *s;
-    size_t size = 0;
-
-    va_start(ap, argc);
-    for (size_t i = 0; i < argc; i++)
-        size += strlen(va_arg(ap, const char *));
-    va_end(ap);
-
-    s = xcalloc(size + 1, sizeof(*s));
-
-    va_start(ap, argc);
-    for (size_t i = 0; i < argc; i++)
-        strcat(s, va_arg(ap, const char *));
-    va_end(ap);
-
-    return s;
-}
-
-
-char *int2hexstr(uint32_t n, uint8_t padding)
-{
-    char *s = xcalloc(12, sizeof(*s));  // 0xdeadbeef = 10 characters + null byte
-    if (padding > 8)
-        padding = 8;
-
-    snprintf(s, 11, "0x%0*x", padding, n);
-    return s;
-}
-
-char *int2str(uint32_t n)
-{
-    char *s = xcalloc(15, sizeof(*s));  // should be big enough for UINT32_MAX
-
-    if (!n)
-        return xstrdup("0");
-
-    snprintf(s, 10, "%d", n);
-    return s;
 }
 
 
