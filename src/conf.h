@@ -61,13 +61,18 @@ typedef struct {
     } o_current_value;
 } conf_opt_t;
 
+struct bucket {
+    uint32_t val;
+    uint8_t filled;
+};
+
 typedef struct {
     conf_opt_t *cf_table;
     size_t cf_noptions;
     uint32_t *cf_required;
     size_t cf_nrequired;
 
-    uint32_t *cf_bucket;
+    struct bucket *cf_bucket;
     uint32_t *cf_chain;
 } config_t;
 

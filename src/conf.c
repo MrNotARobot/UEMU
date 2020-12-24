@@ -71,10 +71,12 @@ unsigned long hash(const char *name)
 conf_opt_t *get_confopt(config_t *conf, const char *name)
 {
     unsigned long h = hash(name);
-    uint32_t optidx = conf->cf_bucket[h % conf->cf_noptions];
+    uint32_t optidx = conf->cf_bucket[h % conf->cf_noptions].val;
 
     while (strcmp(name, conf->cf_table[optidx].o_name) != 0) {
-        optidx = conf->cf_chain[h % conf->cf_noptions];
+        if (optidx == (conf->cf_noptions - 1))
+            break;
+        optidx = conf->cf_chain[optidx];
         h = conf->cf_chain[optidx];
     }
 
@@ -90,7 +92,8 @@ void conf_start(config_t *conf)
     if (!conf)
         return;
 
-    conf->cf_bucket = conf->cf_chain = NULL;
+    conf->cf_bucket = NULL;
+    conf->cf_chain = NULL;
 
     conf->cf_table = NULL;
     conf->cf_required = NULL;
@@ -109,14 +112,12 @@ void conf_end(config_t *conf)
     for (size_t i = 0; i < conf->cf_noptions; i++) {
         h = hash(conf->cf_table[i].o_name);
 
-        if (conf->cf_chain[conf->cf_bucket[h % conf->cf_noptions]] != i) {
-            conf->cf_chain[conf->cf_bucket[h % conf->cf_noptions]] = i;
-            conf->cf_chain[i] = i;
-            continue;
+        if (!conf->cf_bucket[h % conf->cf_noptions].filled) {
+            conf->cf_bucket[h % conf->cf_noptions].val= i;
+            conf->cf_bucket[h % conf->cf_noptions].filled = 1;
         }
 
-        conf->cf_bucket[h % conf->cf_noptions] = i;
-        conf->cf_chain[i] = i;
+        conf->cf_chain[conf->cf_bucket[h % conf->cf_noptions].val] = i;
     }
 }
 

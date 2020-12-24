@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <unistd.h>
 
 #include "../memory.h"
 #include "../system.h"
@@ -35,7 +36,7 @@
 #include "disassembler.h"
 
 static uint32_t readMx(x86CPU *cpu, moffset32_t vaddr, int size, _Bool);
-static void writeMx(x86CPU *cpu, moffset32_t vaddr, uint32_t src, int size);
+static void writeMx(x86CPU *cpu, moffset32_t vaddr, uint64_t src, int size);
 static void build_environment(x86CPU *, int, char **, char **);
 
 //
@@ -69,7 +70,8 @@ void x86_startcpu(x86CPU *cpu)
 
     conf_start(x86_conf(cpu));
     conf_add(x86_conf(cpu), "executable", "executable", 0, CONF_TP_STRING, CONF_REQUIRED, CONF_NO_ARG, NULL, 0);
-    conf_add(x86_conf(cpu), "dbg.breakpoint", "--break", 'b', CONF_TP_HEX, CONF_OPTIONAL, CONF_ARG_REQUIRED, NULL, 0);
+    conf_add(x86_conf(cpu), "dbg.breakpoint", "--break", 0, CONF_TP_HEX, CONF_OPTIONAL, CONF_ARG_REQUIRED, NULL, 0);
+    conf_add(x86_conf(cpu), "dbg.singlestep", "--singlestep", 0, CONF_TP_BOOL, CONF_OPTIONAL, CONF_NO_ARG, NULL, 0);
     conf_end(x86_conf(cpu));
 }
 
@@ -164,7 +166,7 @@ static uint32_t readMx(x86CPU *cpu, moffset32_t vaddr, int size, _Bool tryread)
     return bytes;
 }
 
-static void writeMx(x86CPU *cpu, moffset32_t vaddr, uint32_t src, int size)
+static void writeMx(x86CPU *cpu, moffset32_t vaddr, uint64_t src, int size)
 {
     if (!cpu)
         return;
@@ -178,6 +180,9 @@ static void writeMx(x86CPU *cpu, moffset32_t vaddr, uint32_t src, int size)
             break;
         case 32:
             mmu_write32(&cpu->mmu, src, vaddr);
+            break;
+        case 64:
+            mmu_write64(&cpu->mmu, src, vaddr);
             break;
     }
 
@@ -236,6 +241,11 @@ void x86_writeM16(x86CPU *cpu, moffset32_t vaddr, uint16_t bytes)
 void x86_writeM32(x86CPU * cpu, moffset32_t vaddr, uint32_t bytes)
 {
     writeMx(cpu, vaddr, bytes, 32);
+}
+
+void x86_writeM64(x86CPU * cpu, moffset32_t vaddr, uint64_t bytes)
+{
+    writeMx(cpu, vaddr, bytes, 64);
 }
 
 // the atomic versions will be left to be worked on when we start to support processes and threads
@@ -584,6 +594,10 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
 
     environ_ = xcalloc(environsz + 1, sizeof (*environ_));
 
+    // write the end marker
+    x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) - 4);
+    x86_writeM32(cpu, x86_readR32(cpu, ESP), 0);
+
     // write the environment variables to the stack
     for (int i = environsz - 1; i >= 0; i--)
     {
@@ -607,6 +621,31 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
 
         argv_[i] = x86_readR32(cpu, ESP);
     }
+
+    // padding
+    x86_writeR32(cpu, x86_readR32(cpu, ESP), x86_readR32(cpu, ESP) - 8);
+    x86_writeM64(cpu, x86_readR32(cpu, ESP), 0);
+
+    // Auxiliary vector
+    x86_writeR32(cpu, x86_readR32(cpu, ESP), x86_readR32(cpu, ESP) - 4);
+    x86_writeM32(cpu, x86_readR32(cpu, ESP), AT_UID);
+    x86_writeR32(cpu, x86_readR32(cpu, ESP), x86_readR32(cpu, ESP) - 4);
+    x86_writeM32(cpu, x86_readR32(cpu, ESP), getuid());
+
+    x86_writeR32(cpu, x86_readR32(cpu, ESP), x86_readR32(cpu, ESP) - 4);
+    x86_writeM32(cpu, x86_readR32(cpu, ESP), AT_EUID);
+    x86_writeR32(cpu, x86_readR32(cpu, ESP), x86_readR32(cpu, ESP) - 4);
+    x86_writeM32(cpu, x86_readR32(cpu, ESP), geteuid());
+
+    x86_writeR32(cpu, x86_readR32(cpu, ESP), x86_readR32(cpu, ESP) - 4);
+    x86_writeM32(cpu, x86_readR32(cpu, ESP), AT_GID);
+    x86_writeR32(cpu, x86_readR32(cpu, ESP), x86_readR32(cpu, ESP) - 4);
+    x86_writeM32(cpu, x86_readR32(cpu, ESP), getgid());
+
+    x86_writeR32(cpu, x86_readR32(cpu, ESP), x86_readR32(cpu, ESP) - 4);
+    x86_writeM32(cpu, x86_readR32(cpu, ESP), AT_EGID);
+    x86_writeR32(cpu, x86_readR32(cpu, ESP), x86_readR32(cpu, ESP) - 4);
+    x86_writeM32(cpu, x86_readR32(cpu, ESP), getegid());
 
 
     // align the stack
@@ -649,6 +688,8 @@ void x86_cpu_exec(char *executable, int argc, char *argv[], char **envp)
     x86CPU *cpu;
     struct instruction instr;
     int start_argv;
+    moffset32_t breakpoint;
+    _Bool singlestep = 0;
 
     instr.name = NULL;
     instr.size = 0;
@@ -698,12 +739,15 @@ void x86_cpu_exec(char *executable, int argc, char *argv[], char **envp)
 
     tracer_push(&cpu->tracer, cpu->EIP, 0, cpu->ESP);
 
+    breakpoint = conf_getval(x86_conf(cpu), "dbg.breakpoint");
+    singlestep = conf_getval(x86_conf(cpu), "dbg.singlestep");
     while (1) {
 
         x86dbg_print_state(cpu);
 
-        moffset32_t breakpoint = conf_getval(x86_conf(cpu), "dbg.breakpoint");
         if (x86_readR32(cpu, EIP) == breakpoint)
+            getchar();
+        if (singlestep)
             getchar();
 
         instr = x86_decode(cpu, cpu->EIP);

@@ -101,6 +101,7 @@ uint32_t x86_try_readM32(x86CPU *, moffset32_t);
 void x86_writeM8(x86CPU *, moffset32_t, uint8_t);
 void x86_writeM16(x86CPU *, moffset32_t, uint16_t);
 void x86_writeM32(x86CPU *, moffset32_t, uint32_t);
+void x86_writeM64(x86CPU *, moffset32_t, uint64_t);
 
 uint8_t x86_atomic_readM8(x86CPU *, moffset32_t);
 uint16_t x86_atomic_readM16(x86CPU *, moffset32_t);
