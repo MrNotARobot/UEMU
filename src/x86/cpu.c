@@ -420,13 +420,13 @@ uint8_t x86_readR8(x86CPU *cpu, uint8_t register8)
 
     switch (register8) {
         case AL: return cpu ->EAX & 0x000000ff;
-        case AH: return cpu ->EAX & 0x0000ff00;
+        case AH: return (cpu ->EAX & 0x0000ff00) >> 4;
         case BL: return cpu ->EBX & 0x000000ff;
-        case BH: return cpu ->EBX & 0x0000ff00;
+        case BH: return (cpu ->EBX & 0x0000ff00) >> 4;
         case CL: return cpu ->ECX & 0x000000ff;
-        case CH: return cpu ->ECX & 0x0000ff00;
+        case CH: return (cpu ->ECX & 0x0000ff00) >> 4;
         case DL: return cpu ->EDX & 0x000000ff;
-        case DH: return cpu ->EDX & 0x0000ff00;
+        case DH: return (cpu ->EDX & 0x0000ff00) >> 4;
     }
 
     return 0;

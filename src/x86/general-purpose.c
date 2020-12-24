@@ -1621,3 +1621,254 @@ void x86__mm_m32_r32_test(void *cpu, moffset32_t vaddr, uint8_t reg)
 {
     x86__mm_mX_immX_test(cpu, vaddr, x86_readR32(cpu, reg), 16);
 }
+
+
+// CMP
+
+static _Bool x86__mm_rX_immX_cmp(void *, uint8_t, uint32_t, uint8_t);
+static _Bool x86__mm_mX_immX_cmp(void *, moffset32_t, uint32_t, uint8_t);
+
+static _Bool x86__mm_rX_immX_cmp(void *cpu, uint8_t src, uint32_t imm, uint8_t size)
+{
+    uint32_t result = 0;
+    uint32_t operand1;
+
+    x86_clearflag(cpu, OF);
+    x86_clearflag(cpu, SF);
+    x86_clearflag(cpu, ZF);
+    x86_clearflag(cpu, AF);
+    x86_clearflag(cpu, CF);
+    x86_clearflag(cpu, PF);
+
+    if (size == 8) {
+        operand1 = x86_readR8(cpu, src);
+        result = lsb(operand1) - lsb(imm);
+
+        if (signbit8(result))
+            x86_setflag(cpu, SF);
+
+        if (overflow8(lsb(operand1), lsb(imm), lsb(result))) {
+            x86_setflag(cpu, OF);
+            x86_setflag(cpu, CF);
+        }
+
+    } else if (size == 16) {
+        operand1 = x86_readR16(cpu, src);
+        result = low16(operand1) - low16(imm);
+
+        if (signbit16(result))
+            x86_setflag(cpu, SF);
+
+        if (overflow16(low16(operand1), low16(imm), low16(result))) {
+            x86_setflag(cpu, OF);
+            x86_setflag(cpu, CF);
+        }
+
+    } else {
+        operand1 = x86_readR32(cpu, src);
+        result = operand1 - imm;
+
+        if (signbit32(result))
+            x86_setflag(cpu, SF);
+
+        if (overflow32(operand1, imm, result)) {
+            x86_setflag(cpu, OF);
+            x86_setflag(cpu, CF);
+        }
+    }
+
+    if (!result)
+        x86_setflag(cpu, ZF);
+
+    if (parity_even(result))
+        x86_setflag(cpu, PF);
+
+    if (auxborrow(operand1, imm))
+        x86_setflag(cpu, AF);
+
+    return result;
+}
+
+static _Bool x86__mm_mX_immX_cmp(void *cpu, moffset32_t src, uint32_t imm, uint8_t size)
+{
+    uint32_t result = 0;
+    uint32_t operand1;
+
+    x86_clearflag(cpu, OF);
+    x86_clearflag(cpu, SF);
+    x86_clearflag(cpu, ZF);
+    x86_clearflag(cpu, AF);
+    x86_clearflag(cpu, CF);
+    x86_clearflag(cpu, PF);
+
+    if (size == 8) {
+        operand1 = x86_readM8(cpu, src);
+        result = lsb(operand1) - lsb(imm);
+
+        if (signbit8(result))
+            x86_setflag(cpu, SF);
+
+        if (overflow8(lsb(operand1), lsb(imm), lsb(result))) {
+            x86_setflag(cpu, OF);
+            x86_setflag(cpu, CF);
+        }
+
+    } else if (size == 16) {
+        operand1 = x86_readM16(cpu, src);
+        result = low16(operand1) - low16(imm);
+
+        if (signbit16(result))
+            x86_setflag(cpu, SF);
+
+        if (overflow16(low16(operand1), low16(imm), low16(result))) {
+            x86_setflag(cpu, OF);
+            x86_setflag(cpu, CF);
+        }
+
+    } else {
+        operand1 = x86_readM32(cpu, src);
+        result = operand1 - imm;
+
+        if (signbit32(result))
+            x86_setflag(cpu, SF);
+
+        if (overflow32(operand1, imm, result)) {
+            x86_setflag(cpu, OF);
+            x86_setflag(cpu, CF);
+        }
+    }
+
+    if (!result)
+        x86_setflag(cpu, ZF);
+
+    if (parity_even(result))
+        x86_setflag(cpu, PF);
+
+    if (auxborrow(operand1, imm))
+        x86_setflag(cpu, AF);
+
+    return result;
+}
+
+_Bool x86__mm_al_imm8_cmp(void *cpu, uint8_t imm)
+{
+    return x86__mm_rX_immX_cmp(cpu, AL, imm, 8);
+}
+
+_Bool x86__mm_ax_imm16_cmp(void *cpu, uint16_t imm)
+{
+    return x86__mm_rX_immX_cmp(cpu, AX, imm, 16);
+}
+
+_Bool x86__mm_eax_imm32_cmp(void *cpu, uint32_t imm)
+{
+    return x86__mm_rX_immX_cmp(cpu, EAX, imm, 32);
+}
+
+_Bool x86__mm_r8_imm8_cmp(void *cpu, uint8_t src, uint8_t imm)
+{
+    return x86__mm_rX_immX_cmp(cpu, src, imm, 8);
+}
+
+_Bool x86__mm_r16_imm16_cmp(void *cpu, uint8_t src, uint16_t imm)
+{
+    return x86__mm_rX_immX_cmp(cpu, src, imm, 16);
+}
+
+_Bool x86__mm_r32_imm32_cmp(void *cpu, uint8_t src, uint32_t imm)
+{
+    return x86__mm_rX_immX_cmp(cpu, src, imm, 32);
+}
+
+_Bool x86__mm_m8_imm8_cmp(void *cpu, moffset32_t src, uint8_t imm)
+{
+    return x86__mm_mX_immX_cmp(cpu, src, imm, 8);
+}
+
+_Bool x86__mm_m16_imm16_cmp(void *cpu, moffset32_t src, uint16_t imm)
+{
+    return x86__mm_mX_immX_cmp(cpu, src, imm, 16);
+}
+
+_Bool x86__mm_m32_imm32_cmp(void *cpu, moffset32_t src, uint32_t imm)
+{
+    return x86__mm_mX_immX_cmp(cpu, src, imm, 32);
+}
+
+_Bool x86__mm_r8_r8_cmp(void *cpu, uint8_t src1, uint8_t src2)
+{
+    return x86__mm_rX_immX_cmp(cpu, src1, x86_readR8(cpu, src2), 8);
+}
+
+_Bool x86__mm_m8_r8_cmp(void *cpu, moffset32_t src1, uint8_t src2)
+{
+    return x86__mm_mX_immX_cmp(cpu, src1, x86_readR8(cpu, src2), 8);
+}
+
+_Bool x86__mm_r16_r16_cmp(void *cpu, uint8_t src1, uint8_t src2)
+{
+    return x86__mm_rX_immX_cmp(cpu, src1, x86_readR16(cpu, src2), 16);
+}
+
+_Bool x86__mm_m16_r16_cmp(void *cpu, moffset32_t src1, uint8_t src2)
+{
+    return x86__mm_mX_immX_cmp(cpu, src1, x86_readR16(cpu, src2), 16);
+}
+
+_Bool x86__mm_r32_r32_cmp(void *cpu, uint8_t src1, uint8_t src2)
+{
+    return x86__mm_rX_immX_cmp(cpu, src1, x86_readR32(cpu, src2), 32);
+}
+
+_Bool x86__mm_m32_r32_cmp(void *cpu, moffset32_t src1, uint8_t src2)
+{
+    return x86__mm_mX_immX_cmp(cpu, src1, x86_readR32(cpu, src2), 32);
+}
+
+_Bool x86__mm_r8_m8_cmp(void *cpu, uint8_t src1, moffset32_t src2)
+{
+    return x86__mm_rX_immX_cmp(cpu, src1, x86_readM8(cpu, src2), 8);
+}
+
+_Bool x86__mm_r16_m16_cmp(void *cpu, uint8_t src1, moffset32_t src2)
+{
+    return x86__mm_rX_immX_cmp(cpu, src1, x86_readM16(cpu, src2), 16);
+}
+
+_Bool x86__mm_r32_m32_cmp(void *cpu, uint8_t src1, moffset32_t src2)
+{
+    return x86__mm_rX_immX_cmp(cpu, src1, x86_readM32(cpu, src2), 32);
+}
+
+
+// MOVZX
+
+void x86__mm_r16_r8_movzx(void *cpu, uint8_t dest, uint8_t src)
+{
+    x86__mm_r16_imm16_mov(cpu, dest, zeroxtnd8to16(x86_readR8(cpu, src)));
+}
+
+void x86__mm_r32_r8_movzx(void *cpu, uint8_t dest, uint8_t src)
+{
+    x86__mm_r32_imm32_mov(cpu, dest, zeroxtnd8(x86_readR8(cpu, src)));
+}
+
+void x86__mm_r16_m8_movzx(void *cpu, uint8_t dest, moffset32_t src)
+{
+    x86__mm_r16_imm16_mov(cpu, dest, zeroxtnd8to16(x86_readM8(cpu, src)));
+}
+
+void x86__mm_r32_m8_movzx(void *cpu, uint8_t dest, moffset32_t src)
+{
+    x86__mm_r32_imm32_mov(cpu, dest, zeroxtnd8(x86_readM8(cpu, src)));
+}
+
+void x86__mm_r32_r16_movzx(void *cpu, uint8_t dest, uint8_t src)
+{
+    x86__mm_r32_imm32_mov(cpu, dest, zeroxtnd16(x86_readR16(cpu, src)));
+}
+
+void x86__mm_r32_m16_movzx(void *cpu, uint8_t dest, moffset32_t src)
+{
+    x86__mm_r32_imm32_mov(cpu, dest, zeroxtnd16(x86_readM16(cpu, src)));
+}

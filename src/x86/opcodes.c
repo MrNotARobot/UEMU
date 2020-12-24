@@ -393,12 +393,12 @@ void x86_init_opcode_table(void)
     register_op(0x35, "XOR", NONE, eAX_imm32, AX_imm16, NO_RM, INSTR, x86_mm_xor);
 
     register_op(0x37, "AAA", NONE, OP, OP, NO_RM, INSTR, x86_aaa);
-    register_op(0x38, "CMP", NONE, rm8_r8, rm8_r8, USE_RM, INSTR, x86_cmp);
-    register_op(0x39, "CMP", NONE, rm32_r32, rm16_r16, USE_RM, INSTR, x86_cmp);
-    register_op(0x3A, "CMP", NONE, r8_rm8, r8_rm8, USE_RM, INSTR, x86_cmp);
-    register_op(0x3B, "CMP", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_cmp);
-    register_op(0x3C, "CMP", NONE, AL_imm8, AL_imm8, NO_RM, INSTR, x86_cmp);
-    register_op(0x3D, "CMP", NONE, eAX_imm32, AX_imm16, NO_RM, INSTR, x86_cmp);
+    register_op(0x38, "CMP", NONE, rm8_r8, rm8_r8, USE_RM, INSTR, x86_mm_cmp);
+    register_op(0x39, "CMP", NONE, rm32_r32, rm16_r16, USE_RM, INSTR, x86_mm_cmp);
+    register_op(0x3A, "CMP", NONE, r8_rm8, r8_rm8, USE_RM, INSTR, x86_mm_cmp);
+    register_op(0x3B, "CMP", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_mm_cmp);
+    register_op(0x3C, "CMP", NONE, AL_imm8, AL_imm8, NO_RM, INSTR, x86_mm_cmp);
+    register_op(0x3D, "CMP", NONE, eAX_imm32, AX_imm16, NO_RM, INSTR, x86_mm_cmp);
 
     register_op(0x3f, "AAS", NONE, OP, OP, NO_RM, INSTR, x86_aas);
     for (size_t i = 0; i < 8; i++)
@@ -449,7 +449,7 @@ void x86_init_opcode_table(void)
     register_op_ext(0x80, 4, "AND", NONE, rm8_imm8, rm8_imm8, USE_RM, INSTR, x86_mm_and);
     register_op_ext(0x80, 5, "SUB", NONE, rm8_imm8, rm8_imm8, USE_RM, INSTR, x86_mm_sub);
     register_op_ext(0x80, 6, "XOR", NONE, rm8_imm8, rm8_imm8, USE_RM, INSTR, x86_mm_xor);
-    register_op_ext(0x80, 7, "CMP", NONE, rm8_imm8, rm8_imm8, USE_RM, INSTR, x86_cmp);
+    register_op_ext(0x80, 7, "CMP", NONE, rm8_imm8, rm8_imm8, USE_RM, INSTR, x86_mm_cmp);
     register_op_ext(0x81, 0, "ADD", NONE, rm32_imm32, rm16_imm16, USE_RM, INSTR, x86_mm_add);
     register_op_ext(0x81, 1, "OR", NONE, rm32_imm32, rm16_imm16, USE_RM, INSTR, x86_or);
     register_op_ext(0x81, 2, "ADC", NONE, rm32_imm32, rm16_imm16, USE_RM, INSTR, x86_adc);
@@ -457,7 +457,7 @@ void x86_init_opcode_table(void)
     register_op_ext(0x81, 4, "AND", NONE, rm32_imm32, rm16_imm16, USE_RM, INSTR, x86_mm_and);
     register_op_ext(0x81, 5, "SUB", NONE, rm32_imm32, rm16_imm16, USE_RM, INSTR, x86_mm_sub);
     register_op_ext(0x81, 6, "XOR", NONE, rm32_imm32, rm16_imm16, USE_RM, INSTR, x86_mm_xor);
-    register_op_ext(0x81, 7, "CMP", NONE, rm32_imm32, rm16_imm16, USE_RM, INSTR, x86_cmp);
+    register_op_ext(0x81, 7, "CMP", NONE, rm32_imm32, rm16_imm16, USE_RM, INSTR, x86_mm_cmp);
     register_op_ext(0x82, 0, "ADD", NONE, rm8_imm8, rm8_imm8, USE_RM, INSTR, x86_mm_add);
     register_op_ext(0x82, 1, "OR", NONE, rm8_imm8, rm8_imm8, USE_RM, INSTR, x86_or);
     register_op_ext(0x82, 2, "ADC", NONE, rm8_imm8, rm8_imm8, USE_RM, INSTR, x86_adc);
@@ -465,7 +465,7 @@ void x86_init_opcode_table(void)
     register_op_ext(0x82, 4, "AND", NONE, rm8_imm8, rm8_imm8, USE_RM, INSTR, x86_mm_and);
     register_op_ext(0x82, 5, "SUB", NONE, rm8_imm8, rm8_imm8, USE_RM, INSTR, x86_mm_sub);
     register_op_ext(0x82, 6, "XOR", NONE, rm8_imm8, rm8_imm8, USE_RM, INSTR, x86_mm_xor);
-    register_op_ext(0x82, 7, "CMP", NONE, rm8_imm8, rm8_imm8, USE_RM, INSTR, x86_cmp);
+    register_op_ext(0x82, 7, "CMP", NONE, rm8_imm8, rm8_imm8, USE_RM, INSTR, x86_mm_cmp);
     register_op_ext(0x83, 0, "ADD", NONE, rm32_imm8, rm16_imm8, USE_RM, INSTR, x86_mm_add);
     register_op_ext(0x83, 1, "OR", NONE, rm32_imm8, rm16_imm8, USE_RM, INSTR, x86_or);
     register_op_ext(0x83, 2, "ADC", NONE, rm32_imm8, rm16_imm8, USE_RM, INSTR, x86_adc);
@@ -473,7 +473,7 @@ void x86_init_opcode_table(void)
     register_op_ext(0x83, 4, "AND", NONE, rm32_imm8, rm16_imm8, USE_RM, INSTR, x86_mm_and);
     register_op_ext(0x83, 5, "SUB", NONE, rm32_imm8, rm16_imm8, USE_RM, INSTR, x86_mm_sub);
     register_op_ext(0x83, 6, "XOR", NONE, rm32_imm8, rm16_imm8, USE_RM, INSTR, x86_mm_xor);
-    register_op_ext(0x83, 7, "CMP", NONE, rm32_imm8, rm16_imm8, USE_RM, INSTR, x86_cmp);
+    register_op_ext(0x83, 7, "CMP", NONE, rm32_imm8, rm16_imm8, USE_RM, INSTR, x86_mm_cmp);
     register_op(0x84, "TEST", NONE, rm8_r8, rm8_r8, USE_RM, INSTR, x86_mm_test);
     register_op(0x85, "TEST", NONE, rm32_r32, rm16_r16, USE_RM, INSTR, x86_mm_test);
     register_op(0x86, "XCHG", NONE, rm8_r8, rm8_r8, USE_RM, INSTR, x86_xchg);
@@ -1242,8 +1242,8 @@ void x86_init_opcode_table(void)
     register_0f_op(0xB3, "BTR", NONE, rm32_r32, rm16_r16, USE_RM, INSTR, x86_btr);
     register_0f_op(0xB4, "LFS", NONE, r32_m16_32, r16_m16_16, USE_RM, INSTR, x86_lfs);
     register_0f_op(0xB5, "LGS", NONE, r32_m16_32, r16_m16_16, USE_RM, INSTR, x86_lgs);
-    register_0f_op(0xB6, "MOVZX", NONE, r32_rm8, r16_rm8, USE_RM, INSTR, x86_movzx);
-    register_0f_op(0xB7, "MOVZX", NONE, r32_rm16, r32_rm16, USE_RM, INSTR, x86_movzx);
+    register_0f_op(0xB6, "MOVZX", NONE, r32_rm8, r16_rm8, USE_RM, INSTR, x86_mm_movzx);
+    register_0f_op(0xB7, "MOVZX", NONE, r32_rm16, r32_rm16, USE_RM, INSTR, x86_mm_movzx);
     register_0f_op_prefix(0xF3, 0xB8, "POPCNT", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_popcnt);
     register_0f_op(0xB9, "UD1", NONE, r32_rm32, r32_rm32, USE_RM, INSTR, x86_ud1);
     register_0f_op_ext(0xBA, 4, "BT", NONE, rm32_imm8, rm16_imm8, USE_RM, INSTR, x86_bt);

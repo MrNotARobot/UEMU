@@ -793,13 +793,100 @@ void x86_cmovcc(void *cpu, struct exec_data data)
 }
 
 
-void x86_cmp(void *cpu, struct exec_data data)
+void x86_mm_cmp(void *cpu, struct exec_data data)
 {
-    (void)cpu, (void)data;
+    moffset32_t vaddr;
 
-    
-    x86_stopcpu(cpu);
-    s_error(1, "emulator: Instruction %s not implemented", __FUNCTION__);
+    if (data.lock)
+        x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
+
+    if (data.adrsz_pfx)
+        vaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
+    else
+        vaddr = x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset);
+
+    switch (data.opc) {
+        case 0x3C:
+            x86__mm_al_imm8_cmp(cpu, lsb(data.imm1));
+            break;
+        case 0x3D:
+            if (data.oprsz_pfx)
+                x86__mm_ax_imm16_cmp(cpu, low16(data.imm1));
+            else
+                x86__mm_eax_imm32_cmp(cpu, data.imm1);
+            break;
+        case 0x82:
+        case 0x80:
+            if (vaddr)
+                x86__mm_m8_imm8_cmp(cpu, vaddr, lsb(data.imm1));
+            else
+                x86__mm_r8_imm8_cmp(cpu, effctvregister(data.modrm, 8), lsb(data.imm1));
+            break;
+        case 0x81:
+            if (vaddr) {
+                if (data.oprsz_pfx)
+                    x86__mm_m16_imm16_cmp(cpu, vaddr, low16(data.imm1));
+                else
+                    x86__mm_m32_imm32_cmp(cpu, vaddr, data.imm1);
+            } else {
+                if (data.oprsz_pfx)
+                    x86__mm_r16_imm16_cmp(cpu, effctvregister(data.modrm, 16), low16(data.imm1));
+                else
+                    x86__mm_r32_imm32_cmp(cpu, effctvregister(data.modrm, 32), data.imm1);
+            }
+            break;
+        case 0x83:
+            if (vaddr) {
+                if (data.oprsz_pfx)
+                    x86__mm_m16_imm16_cmp(cpu, vaddr, sign8to32(lsb(data.imm1)));
+                else
+                    x86__mm_m32_imm32_cmp(cpu, vaddr, sign8to32(lsb(data.imm1)));
+            } else {
+                if (data.oprsz_pfx)
+                    x86__mm_r16_imm16_cmp(cpu, effctvregister(data.modrm, 16), sign8to32(lsb(data.imm1)));
+                else
+                    x86__mm_r32_imm32_cmp(cpu, effctvregister(data.modrm, 32), sign8to32(lsb(data.imm1)));
+            }
+            break;
+        case 0x38:
+            if (vaddr)
+                x86__mm_m8_r8_cmp(cpu, vaddr, reg(data.modrm));
+            else
+                x86__mm_r8_r8_cmp(cpu, effctvregister(data.modrm, 8), reg(data.modrm));
+            break;
+        case 0x39:
+            if (vaddr) {
+                if (data.oprsz_pfx)
+                    x86__mm_m16_r16_cmp(cpu, vaddr, reg(data.modrm));
+                else
+                    x86__mm_m32_r32_cmp(cpu, vaddr, reg(data.modrm));
+            } else {
+                if (data.oprsz_pfx)
+                    x86__mm_r16_r16_cmp(cpu, effctvregister(data.modrm, 16), reg(data.modrm));
+                else
+                    x86__mm_r32_r32_cmp(cpu, effctvregister(data.modrm, 32), reg(data.modrm));
+            }
+            break;
+        case 0x3A:
+            if (vaddr)
+                x86__mm_r8_m8_cmp(cpu, reg(data.modrm), vaddr);
+            else
+                x86__mm_r8_r8_cmp(cpu, reg(data.modrm), effctvregister(data.modrm, 8));
+            break;
+        case 0x3B:
+            if (vaddr) {
+                if (data.oprsz_pfx)
+                    x86__mm_r16_m16_cmp(cpu, reg(data.modrm), vaddr);
+                else
+                    x86__mm_r32_m32_cmp(cpu, reg(data.modrm), vaddr);
+            } else {
+                if (data.oprsz_pfx)
+                    x86__mm_r16_r16_cmp(cpu, reg(data.modrm), effctvregister(data.modrm, 16));
+                else                                        
+                    x86__mm_r32_r32_cmp(cpu, reg(data.modrm), effctvregister(data.modrm, 32));
+            }
+            break;
+    }
 }
 
 
@@ -3201,13 +3288,39 @@ void x86_movups(void *cpu, struct exec_data data)
 }
 
 
-void x86_movzx(void *cpu, struct exec_data data)
+void x86_mm_movzx(void *cpu, struct exec_data data)
 {
-    (void)cpu, (void)data;
+    moffset32_t vaddr;
 
-    
-    x86_stopcpu(cpu);
-    s_error(1, "emulator: Instruction %s not implemented", __FUNCTION__);
+    if (data.lock)
+        x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
+
+    if (data.adrsz_pfx)
+        vaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
+    else
+        vaddr = x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset);
+
+    switch (data.opc) {
+        case 0xB6:
+            if (vaddr) {
+                if (data.oprsz_pfx)
+                    x86__mm_r16_m8_movzx(cpu, reg(data.modrm), vaddr);
+                else
+                    x86__mm_r32_m8_movzx(cpu, reg(data.modrm), vaddr);
+            } else {
+                if (data.oprsz_pfx)
+                    x86__mm_r16_r8_movzx(cpu, reg(data.modrm), effctvregister(data.modrm, 8));
+                else
+                    x86__mm_r32_r8_movzx(cpu, reg(data.modrm), effctvregister(data.modrm, 8));
+            }
+            break;
+        case 0xB7:
+            if (vaddr)
+                x86__mm_r32_m16_movzx(cpu, reg(data.modrm), vaddr);
+            else
+                x86__mm_r32_r16_movzx(cpu, reg(data.modrm), effctvregister(data.modrm, 16));
+            break;
+    }
 }
 
 
