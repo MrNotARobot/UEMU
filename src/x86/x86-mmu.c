@@ -76,6 +76,7 @@ static void mmu_set_error(x86MMU *mmu, int errnum, const char *fmt, ...)
 }
 
 #define base(addr) (addr & 0xfffff000)
+#include "../system.h"
 inline static void *translate(x86MMU *mmu, moffset32_t virtaddr)
 {
     if ((virtaddr & STACK_MASK) == STACK_MASK) {
@@ -104,6 +105,7 @@ void mmu_init(x86MMU *mmu)
     conf_mmu_pagesize = sysconf(_SC_PAGESIZE);
 
     mmu->mm_segment_tbl = NULL;
+    mmu->mm_stack = NULL;
     mmu->mm_segments = 0;
     mmu_set_error(mmu, 0, NULL);
 }

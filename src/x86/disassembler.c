@@ -152,7 +152,7 @@ char *x86_disassemble(x86CPU *cpu, struct instruction ins)
     char *immediate = NULL;
     char *temp = NULL;
     char *s = NULL;
-    uint8_t mnemonic_spacing = 7;
+    uint8_t mnemonic_spacing = 8;
     size_t mnemonic_size;
 
     if (ins.encoding == no_encoding)
@@ -162,7 +162,7 @@ char *x86_disassemble(x86CPU *cpu, struct instruction ins)
     if (mnemonic_size >= mnemonic_spacing)
         mnemonic_spacing = mnemonic_size + 1;
 
-    mnemonic = xcalloc(mnemonic_size + 1, sizeof(*s));
+    mnemonic = xcalloc(mnemonic_spacing, sizeof(*s));
 
     for (size_t i = 0; i < mnemonic_spacing; i++) {
         if (i < mnemonic_size)
@@ -170,6 +170,8 @@ char *x86_disassemble(x86CPU *cpu, struct instruction ins)
         else
             mnemonic[i] = ' ';
     }
+
+    mnemonic[mnemonic_spacing-1] = '\0';
 
     temp = mnemonic;
     mnemonic = strcatall(3, conf_disassm_mnemonic_colorcode, mnemonic, "\033[0m");

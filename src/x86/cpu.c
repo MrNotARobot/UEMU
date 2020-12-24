@@ -83,7 +83,7 @@ void x86_stopcpu(x86CPU *cpu)
     conf_freetables(x86_conf(cpu));
     elf_unload(x86_elf(cpu));
     mmu_unloadall(x86_mmu(cpu));
-
+    xfree(cpu);
 }
 
 // exception handling
@@ -99,6 +99,7 @@ void x86_raise_exception(x86CPU *cpu, int exct)
 
     saved_eip = x86_readR32(cpu, EIP);
     x86_stopcpu(cpu);
+
     switch (exct) {
         case INT_UD:
             if (errstr) {
@@ -397,41 +398,15 @@ void x86_writeR32(x86CPU *cpu, uint8_t register32, uint32_t value)
         return;
 
     switch (register32) {
-        case EIP:
-            x86_update_eip_absolute(cpu, value);
-            break;
-        case EAX:
-            cpu->EAX = value;
-            tracer_set(&cpu->tracer, TRACE_VAR_EAX, cpu->EAX);
-            break;
-        case EBX:
-            cpu->EBX = value;
-            tracer_set(&cpu->tracer, TRACE_VAR_EBX, cpu->EBX);
-            break;
-        case ECX:
-            cpu->ECX = value;
-            tracer_set(&cpu->tracer, TRACE_VAR_ECX, cpu->ECX);
-            break;
-        case EDX:
-            cpu->EDX = value;
-            tracer_set(&cpu->tracer, TRACE_VAR_EDX, cpu->EDX);
-            break;
-        case ESP:
-            cpu->ESP = value;
-            tracer_set(&cpu->tracer, TRACE_VAR_ESP, cpu->ESP);
-            break;
-        case EBP:
-            cpu->EBP = value;
-            tracer_set(&cpu->tracer, TRACE_VAR_EBP, cpu->EBP);
-            break;
-        case EDI:
-            cpu->EDI = value;
-            tracer_set(&cpu->tracer, TRACE_VAR_EDI, cpu->EDI);
-            break;
-        case ESI:
-            cpu->ESI = value;
-            tracer_set(&cpu->tracer, TRACE_VAR_ESI, cpu->ESI);
-            break;
+        case EIP: x86_update_eip_absolute(cpu, value); break;
+        case EAX: cpu->EAX = value; tracer_set(&cpu->tracer, TRACE_VAR_EAX, cpu->EAX); break;
+        case EBX: cpu->EBX = value; tracer_set(&cpu->tracer, TRACE_VAR_EBX, cpu->EBX); break;
+        case ECX: cpu->ECX = value; tracer_set(&cpu->tracer, TRACE_VAR_ECX, cpu->ECX); break;
+        case EDX: cpu->EDX = value; tracer_set(&cpu->tracer, TRACE_VAR_EDX, cpu->EDX); break;
+        case ESP: cpu->ESP = value; tracer_set(&cpu->tracer, TRACE_VAR_ESP, cpu->ESP); break;
+        case EBP: cpu->EBP = value; tracer_set(&cpu->tracer, TRACE_VAR_EBP, cpu->EBP); break;
+        case EDI: cpu->EDI = value; tracer_set(&cpu->tracer, TRACE_VAR_EDI, cpu->EDI); break;
+        case ESI: cpu->ESI = value; tracer_set(&cpu->tracer, TRACE_VAR_ESI, cpu->ESI); break;
     }
 }
 
@@ -568,7 +543,7 @@ const uint8_t *x86_getptr(x86CPU *cpu, moffset32_t vaddr)
     if (!cpu)
         return NULL;
 
-    return mmu_getptr(&cpu->mmu, vaddr);
+    return mmu_getptr(x86_mmu(cpu), vaddr);
 }
 
 int x86_ptrtype(x86CPU *cpu, moffset32_t vaddr)
@@ -578,7 +553,7 @@ int x86_ptrtype(x86CPU *cpu, moffset32_t vaddr)
     if (!cpu)
         return 0;
 
-    type = mmu_ptrtype(&cpu->mmu, vaddr);
+    type = mmu_ptrtype(x86_mmu(cpu), vaddr);
     if (type == ST_RODATA || type == ST_RWDATA)
         return DATA_PTR;
     else if (type == ST_RXCODE || type == ST_XOCODE || type == ST_RWXCODE)
@@ -619,6 +594,7 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
     }
 
     argv_ = alloca((argc + 1) * sizeof(*argv_));
+    memset(argv_, 0, (argc + 1)  * sizeof(*argv_));
 
     // write the arguments to the stack
     for (int i = argc - 1; i >= 0; i--) {
@@ -657,9 +633,7 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
     x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) - 4);
     x86_writeM32(cpu, cpu->ESP, argc);
 
-    s_info("%p", argv[0]);
     xfree(argv[0]);
-    s_info("%p", environ_);
     xfree(environ_);
 }
 
@@ -670,7 +644,7 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
  */
 void x86_cpu_exec(char *executable, int argc, char *argv[], char **envp)
 {
-    x86CPU cpu;
+    x86CPU *cpu;
     struct instruction instr;
     int start_argv;
 
@@ -683,67 +657,63 @@ void x86_cpu_exec(char *executable, int argc, char *argv[], char **envp)
     if (!executable || !argv || !envp)
         return;
 
-    memset(&cpu, 0, sizeof(cpu));
-    x86_startcpu(&cpu);
+    cpu = xcalloc(1, sizeof(*cpu));
+    x86_startcpu(cpu);
 
-    start_argv = conf_parse_argv(x86_conf(&cpu), argv);
+    start_argv = conf_parse_argv(x86_conf(cpu), argv);
     argc = argc - start_argv;
 
     // map the executable segments to memory.
     // no shared library is loaded just yet.
-    elf_load(&cpu.executable, executable);
-    if (elf_error(&cpu.executable)) {
-        x86_stopcpu(&cpu);
-        s_error(1, "%s", elf_errstr(&cpu.executable));
+    elf_load(&cpu->executable, executable);
+    if (elf_error(&cpu->executable)) {
+        x86_stopcpu(cpu);
+        s_error(1, "%s", elf_errstr(&cpu->executable));
     }
 
     // actually map the segments
-    mmu_mmap_loadable(&cpu.mmu, &cpu.executable);
-    if (mmu_error(&cpu.mmu)) {
-        x86_stopcpu(&cpu);
-        s_error(1, "%s", mmu_errstr(&cpu.mmu));
+    mmu_mmap_loadable(&cpu->mmu, &cpu->executable);
+    if (mmu_error(&cpu->mmu)) {
+        x86_stopcpu(cpu);
+        s_error(1, "%s", mmu_errstr(&cpu->mmu));
     }
 
-    sr_loadcache(x86_resolver(&cpu), executable);
+    sr_loadcache(x86_resolver(cpu), executable);
 
     // we don't need it anymore.
     xfree(executable);
 
     // create a stack
-    if (elf_execstack(&cpu.executable))
+    if (elf_execstack(&cpu->executable))
         stack_flags |= B_STACKEXEC;
 
-    x86_writeR32(&cpu, ESP, mmu_create_stack(&cpu.mmu, stack_flags));
+    x86_writeR32(cpu, ESP, mmu_create_stack(&cpu->mmu, stack_flags));
+    x86_writeR32(cpu, EIP, elf_entrypoint(&cpu->executable));
 
-    build_environment(&cpu, argc, &argv[start_argv], envp);
+    build_environment(cpu, argc, &argv[start_argv], envp);
 
-    x86_writeR32(&cpu, EIP, elf_entrypoint(&cpu.executable));
-
-    tracer_set(&cpu.tracer, TRACE_VAR_ESP, cpu.ESP);
-    tracer_set(&cpu.tracer, TRACE_VAR_EIP, cpu.EIP);
-
-    tracer_push(&cpu.tracer, cpu.EIP, 0, cpu.ESP);
+    tracer_push(&cpu->tracer, cpu->EIP, 0, cpu->ESP);
 
     while (1) {
 
-        x86dbg_print_state(&cpu);
+        x86dbg_print_state(cpu);
 
-        instr = x86_decode(&cpu, cpu.EIP);
+        instr = x86_decode(cpu, cpu->EIP);
 
-        if (mmu_error(&cpu.mmu))
-            x86_raise_exception_d(&cpu, INT_PF, cpu.EIP, mmu_errstr(&cpu.mmu));
+        if (mmu_error(&cpu->mmu))
+            x86_raise_exception_d(cpu, INT_PF, cpu->EIP, mmu_errstr(&cpu->mmu));
 
         if (instr.fail_to_fetch)
-            x86_raise_exception(&cpu, INT_UD);
+            x86_raise_exception(cpu, INT_UD);
 
-        x86_increment_eip(&cpu, instr.size);
+        x86_increment_eip(cpu, instr.size);
 
-        instr.handler(&cpu, instr.data);
+        instr.handler(cpu, instr.data);
 
         // TODO: handle exceptions? I think it would be cool to imitate a real x86 cpu
         // handling of exceptions
     }
 
-    x86_stopcpu(&cpu);
+    x86_stopcpu(cpu);
     exit(0);
 }

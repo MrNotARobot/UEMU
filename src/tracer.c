@@ -42,6 +42,16 @@ void tracer_start(cpu_state_t *tracer, sym_resolver_t *resolver)
 
     memset(tracer, 0, sizeof(*tracer));
 
+    tracer->registers.eax = 0;
+    tracer->registers.ebx = 0;
+    tracer->registers.ecx = 0;
+    tracer->registers.edx = 0;
+    tracer->registers.edi = 0;
+    tracer->registers.esi = 0;
+    tracer->registers.ebp = 0;
+    tracer->registers.esp = 0;
+    tracer->registers.eip = 0;
+
     tracer->backtrace = xcalloc(TRACER_BACKTRACE_SIZE_INCREMENT, sizeof(*tracer->backtrace));
     tracer->backtracesz = TRACER_BACKTRACE_SIZE_INCREMENT;
     tracer->backtraceptr = 0;

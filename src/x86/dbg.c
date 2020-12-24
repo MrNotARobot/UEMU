@@ -188,7 +188,7 @@ static char *disassembleptr(x86CPU *cpu, moffset32_t vaddr)
 
 static char *getptrcontent(x86CPU *cpu, moffset32_t vaddr)
 {
-    moffset32_t ptr = vaddr;
+    moffset32_t ptr;
     static char *s = NULL;
     char *ptrstr = NULL;
     const char *data_color = conf_x86dbg_data_colorcode;
@@ -199,7 +199,7 @@ static char *getptrcontent(x86CPU *cpu, moffset32_t vaddr)
 
     s = xstrdup("");
 
-    for (;;ptr = x86_try_readM32(cpu, ptr)) {
+    for (ptr = vaddr;;ptr = x86_try_readM32(cpu, ptr)) {
         ptrtype = x86_ptrtype(cpu, ptr);
 
         // try and see if there is a string
