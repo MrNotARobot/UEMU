@@ -22,6 +22,7 @@
  *  an emulated x86 cpu.
  */
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
@@ -67,7 +68,8 @@ void x86_startcpu(x86CPU *cpu)
     cpu->sreg_table_[FS] = &cpu->FS; cpu->sreg_table_[GS] = &cpu->GS;
 
     conf_start(x86_conf(cpu));
-    conf_add(x86_conf(cpu), "executable", "EXECUTABLE", 0, CONF_TP_STRING, CONF_REQUIRED, CONF_NO_ARG, NULL, 0);
+    conf_add(x86_conf(cpu), "executable", "executable", 0, CONF_TP_STRING, CONF_REQUIRED, CONF_NO_ARG, NULL, 0);
+    conf_add(x86_conf(cpu), "dbg.breakpoint", "--break", 'b', CONF_TP_HEX, CONF_OPTIONAL, CONF_ARG_REQUIRED, NULL, 0);
     conf_end(x86_conf(cpu));
 }
 
@@ -593,8 +595,7 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
         environ_[i] = x86_readR32(cpu, ESP);
     }
 
-    argv_ = alloca((argc + 1) * sizeof(*argv_));
-    memset(argv_, 0, (argc + 1)  * sizeof(*argv_));
+    argv_ = xcalloc(argc + 1, sizeof(*argv_));
 
     // write the arguments to the stack
     for (int i = argc - 1; i >= 0; i--) {
@@ -604,7 +605,7 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
 
         x86_wrseq(cpu, cpu->ESP, (uint8_t *)argv[i], argsz);
 
-        argv_[i-1] = x86_readR32(cpu, ESP);
+        argv_[i] = x86_readR32(cpu, ESP);
     }
 
 
@@ -635,6 +636,7 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
 
     xfree(argv[0]);
     xfree(environ_);
+    xfree(argv_);
 }
 
 /*
@@ -662,6 +664,8 @@ void x86_cpu_exec(char *executable, int argc, char *argv[], char **envp)
 
     start_argv = conf_parse_argv(x86_conf(cpu), argv);
     argc = argc - start_argv;
+
+    argv[start_argv] = conf_getptr(x86_conf(cpu), "executable");
 
     // map the executable segments to memory.
     // no shared library is loaded just yet.
@@ -697,6 +701,10 @@ void x86_cpu_exec(char *executable, int argc, char *argv[], char **envp)
     while (1) {
 
         x86dbg_print_state(cpu);
+
+        moffset32_t breakpoint = conf_getval(x86_conf(cpu), "dbg.breakpoint");
+        if (x86_readR32(cpu, EIP) == breakpoint)
+            getchar();
 
         instr = x86_decode(cpu, cpu->EIP);
 

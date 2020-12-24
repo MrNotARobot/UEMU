@@ -132,7 +132,7 @@ void conf_freetables(config_t *conf)
 }
 
 void conf_add(config_t *conf, const char *name, const char *longopt, char opt,
-        uint8_t type, _Bool required, _Bool arg_required, void *default_ptr, uint64_t default_value)
+        uint8_t type, _Bool required, int arg_required, void *default_ptr, uint64_t default_value)
 {
     uint32_t index;
 
@@ -170,7 +170,7 @@ void conf_add(config_t *conf, const char *name, const char *longopt, char opt,
     if (required == CONF_REQUIRED) {
         conf->cf_nrequired++;
         conf->cf_required = xreallocarray(conf->cf_required, conf->cf_nrequired, sizeof(*conf->cf_required));
-        conf->cf_required[conf->cf_nrequired-1] = &conf->cf_table[index];
+        conf->cf_required[conf->cf_nrequired-1] = index;
     }
 }
 
@@ -203,18 +203,21 @@ int conf_parse_argv(config_t *conf, char **argv)
             _Bool is_hex = ishex(*argv);
 
             for (size_t i = 0; i < conf->cf_nrequired; i++) {
-                conf_opt_t *required = conf->cf_required[i];
-                if (is_number && required->o_type == CONF_TP_NUMBER && required->o_current_value.value != required->o_default.value) {
+                conf_opt_t *required = &conf->cf_table[conf->cf_required[i]];
+                if (is_number && required->o_type == CONF_TP_NUMBER &&
+                        required->o_current_value.value != required->o_default.value) {
                     opt = required;
                     arg = *argv;
                     break;
 
-                } else if (is_hex && required->o_type == CONF_TP_HEX && required->o_current_value.value != required->o_default.value) {
+                } else if (is_hex && required->o_type == CONF_TP_HEX &&
+                        required->o_current_value.value != required->o_default.value) {
                     opt = required;
                     arg = *argv;
                     break;
 
-                } else if (required->o_type == CONF_TP_STRING && required->o_current_value.ptr == required->o_default.ptr) {
+                } else if (required->o_type == CONF_TP_STRING &&
+                        required->o_current_value.ptr == required->o_default.ptr) {
                     opt = required;
                     arg = *argv;
                     break;
@@ -266,12 +269,13 @@ int conf_parse_argv(config_t *conf, char **argv)
     }
 
     for (size_t i = 0; i < conf->cf_nrequired; i++) {
-        if (conf->cf_required[i]->o_type == CONF_TP_STRING) {
-            if (conf->cf_required[i]->o_current_value.ptr != conf->cf_required[i]->o_default.ptr)
-                s_error(1, "required argument '%s'",  conf->cf_required[i]->o_longopt);
+        opt = &conf->cf_table[conf->cf_required[i]];
+        if (opt->o_type == CONF_TP_STRING) {
+            if (opt->o_current_value.ptr == opt->o_default.ptr)
+                s_error(1, "required argument '%s'",  opt->o_longopt);
         } else {
-            if (conf->cf_required[i]->o_current_value.value != conf->cf_required[i]->o_default.value)
-                s_error(1, "required argument '%s'",  conf->cf_required[i]->o_longopt);
+            if (opt->o_current_value.value == opt->o_default.value)
+                s_error(1, "required argument '%s'",  opt->o_longopt);
         }
     }
 
@@ -307,7 +311,7 @@ uint64_t conf_getval(config_t *conf, const char *name)
 
     opt = get_confopt(conf, name);
 
-    if (!opt || opt->o_type != CONF_TP_NUMBER)
+    if (!opt || opt == CONF_TP_STRING)
         return 0;
 
     return opt->o_current_value.value;

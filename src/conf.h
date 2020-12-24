@@ -46,9 +46,9 @@ typedef struct {
     const char *o_name;
     const char *o_longopt;
     char o_opt;
-    unsigned int o_type : 1;
-    unsigned int o_required : 1;
-    unsigned int o_arg : 1;
+    uint8_t o_type;
+    uint8_t o_required;
+    uint8_t o_arg;
 
     union {
         void *ptr;
@@ -64,7 +64,7 @@ typedef struct {
 typedef struct {
     conf_opt_t *cf_table;
     size_t cf_noptions;
-    conf_opt_t **cf_required;
+    uint32_t *cf_required;
     size_t cf_nrequired;
 
     uint32_t *cf_bucket;
@@ -79,7 +79,7 @@ void conf_start(config_t *);
 void conf_end(config_t *);
 void conf_freetables(config_t *);
 
-void conf_add(config_t *, const char *, const char *, char, uint8_t, _Bool, _Bool, void *, uint64_t);
+void conf_add(config_t *, const char *, const char *, char, uint8_t, _Bool, int, void *, uint64_t);
 
 int conf_parse_argv(config_t *, char **);
 
