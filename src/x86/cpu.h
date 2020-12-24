@@ -30,6 +30,7 @@
 #include "../generic-elf.h"
 #include "../sym-resolver.h"
 #include "../tracer.h"
+#include "../conf.h"
 
 #include "x86-types.h"
 #include "x86-mmu.h"
@@ -41,7 +42,7 @@ typedef struct {
     GenericELF executable;
     sym_resolver_t resolver;
     cpu_state_t tracer;
-
+    config_t configuration;
 
     reg32_t EAX;
     reg32_t EBX;
@@ -71,6 +72,7 @@ typedef struct {
 #define x86_mmu(cpu) (&((x86CPU *)(cpu))->mmu)
 #define x86_elf(cpu) (&((x86CPU *)(cpu))->executable)
 #define x86_resolver(cpu) (&((x86CPU *)(cpu))->resolver)
+#define x86_conf(cpu) (&((x86CPU *)(cpu))->configuration)
 
 enum x86ExceptionsInterrupts {
     INT_UD,     // invalid instruction

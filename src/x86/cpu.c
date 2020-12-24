@@ -65,6 +65,10 @@ void x86_startcpu(x86CPU *cpu)
     cpu->sreg_table_[CS] = &cpu->CS; cpu->sreg_table_[SS] = &cpu->SS;
     cpu->sreg_table_[DS] = &cpu->DS; cpu->sreg_table_[ES] = &cpu->ES;
     cpu->sreg_table_[FS] = &cpu->FS; cpu->sreg_table_[GS] = &cpu->GS;
+
+    conf_start(x86_conf(cpu));
+    conf_add(x86_conf(cpu), "executable", "EXECUTABLE", 0, CONF_TP_STRING, CONF_REQUIRED, CONF_NO_ARG, NULL, 0);
+    conf_end(x86_conf(cpu));
 }
 
 
@@ -75,10 +79,10 @@ void x86_stopcpu(x86CPU *cpu)
 
     x86_free_opcode_table();
     sr_closecache(x86_resolver(cpu));
-    tracer_stop(&cpu->tracer);
-
-    elf_unload(&cpu->executable);
-    mmu_unloadall(&cpu->mmu);
+    tracer_stop(x86_tracer(cpu));
+    conf_freetables(x86_conf(cpu));
+    elf_unload(x86_elf(cpu));
+    mmu_unloadall(x86_mmu(cpu));
 
 }
 
@@ -594,15 +598,9 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
     moffset32_t *argv_;
     uint8_t alignment = 0;
 
-    if (argc == 1) {
-        x86_stopcpu(cpu);
-        s_error(1, "emulator: invalid argv");
-    }
-
-    argc--; // we don't use argv[0]
-    argv[1] = realpath(argv[1], NULL);
-    if (!argv[1])
-        argv[1] = find_executable(argv[1]);
+    argv[0] = realpath(argv[0], NULL);
+    if (!argv[0])
+        argv[0] = find_executable(argv[0]);
 
     for (size_t i = 0; envp[i] != NULL; i++)
         environsz++;
@@ -620,10 +618,10 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
         environ_[i] = x86_readR32(cpu, ESP);
     }
 
-    argv_ = xcalloc(argc + 1, sizeof (*argv_));
+    argv_ = alloca((argc + 1) * sizeof(*argv_));
 
     // write the arguments to the stack
-    for (int i = argc; i >= 1; i--) {
+    for (int i = argc - 1; i >= 0; i--) {
         size_t argsz = strlen(argv[i]) + 1;
 
         x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) - argsz);
@@ -632,6 +630,7 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
 
         argv_[i-1] = x86_readR32(cpu, ESP);
     }
+
 
     // align the stack
     alignment = ((cpu->ESP & 0xfffffff0) - ((environsz + argc + 2)*4 + 4)) & 0x0000000f;
@@ -658,9 +657,10 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
     x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) - 4);
     x86_writeM32(cpu, cpu->ESP, argc);
 
-    xfree(argv[1]);
+    s_info("%p", argv[0]);
+    xfree(argv[0]);
+    s_info("%p", environ_);
     xfree(environ_);
-    xfree(argv_);
 }
 
 /*
@@ -672,6 +672,7 @@ void x86_cpu_exec(char *executable, int argc, char *argv[], char **envp)
 {
     x86CPU cpu;
     struct instruction instr;
+    int start_argv;
 
     instr.name = NULL;
     instr.size = 0;
@@ -684,6 +685,9 @@ void x86_cpu_exec(char *executable, int argc, char *argv[], char **envp)
 
     memset(&cpu, 0, sizeof(cpu));
     x86_startcpu(&cpu);
+
+    start_argv = conf_parse_argv(x86_conf(&cpu), argv);
+    argc = argc - start_argv;
 
     // map the executable segments to memory.
     // no shared library is loaded just yet.
@@ -711,7 +715,7 @@ void x86_cpu_exec(char *executable, int argc, char *argv[], char **envp)
 
     x86_writeR32(&cpu, ESP, mmu_create_stack(&cpu.mmu, stack_flags));
 
-    build_environment(&cpu, argc, argv, envp);
+    build_environment(&cpu, argc, &argv[start_argv], envp);
 
     x86_writeR32(&cpu, EIP, elf_entrypoint(&cpu.executable));
 

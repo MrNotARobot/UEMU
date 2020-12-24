@@ -357,6 +357,7 @@ void x86dbg_print_state(x86CPU *cpu)
     for (uint32_t i = 0, eip = p_start_disassemble_here; i < conf_x86dbg_disassemble_entries; i++) {
         struct instruction ins = x86_decode(cpu, eip);
         char *disassembled;
+        uint32_t padding = first_symbol_size + 4;
         char *symbolname = NULL;
         char *temp = NULL;
 
@@ -377,25 +378,40 @@ void x86dbg_print_state(x86CPU *cpu)
         if (eip == backtrace.st_start && eip == registers.eip) {
             symbolname = strcatall(3, "<", backtrace.st_symbol, ">");
 
-            if (!first_symbol_size)
+            if (!first_symbol_size) {
                 first_symbol_size = strlen(symbolname);
+                padding = first_symbol_size + 4;
+            } 
 
-            s_info(" \033[1;32m◆ 0x%08x %-*s\033[0m\033[1m%s\033[0m", eip, first_symbol_size + 4, symbolname, disassembled);
+            if (padding < strlen(symbolname))
+                padding = strlen(symbolname) + 1;
+
+            s_info(" \033[1;32m◆ 0x%08x %-*s\033[0m\033[1m%s\033[0m", eip, padding, symbolname, disassembled);
         } else if (eip == backtrace.st_start) {
             symbolname = strcatall(3, "<", backtrace.st_symbol, ">");
 
-            if (!first_symbol_size)
+            if (!first_symbol_size) {
                 first_symbol_size = strlen(symbolname);
+                padding = first_symbol_size + 4;
+            } 
+
+            if (padding < strlen(symbolname))
+                padding = strlen(symbolname) + 1;
 
             s_info("   0x%08x %-*s%s", eip, first_symbol_size + 4, symbolname, disassembled);
         } else if (eip == registers.eip) {
             temp = int2str(eip - backtrace.st_start);
             symbolname = strcatall(5, "<", backtrace.st_symbol, "+", temp,  ">");
 
-            if (!first_symbol_size)
+            if (!first_symbol_size) {
                 first_symbol_size = strlen(symbolname);
+                padding = first_symbol_size + 4;
+            } 
 
-            s_info(" \033[1;32m◆ 0x%08x %-*s\033[0m\033[1m%s\033[0m", eip, first_symbol_size + 4, symbolname, disassembled);
+            if (padding < strlen(symbolname))
+                padding = strlen(symbolname) + 1;
+
+            s_info(" \033[1;32m◆ 0x%08x %-*s\033[0m\033[1m%s\033[0m", eip, padding, symbolname, disassembled);
             if (i == 5)
                 p_start_disassemble_here += first_instruction_size;
 
@@ -417,10 +433,15 @@ void x86dbg_print_state(x86CPU *cpu)
             temp = int2str(eip - backtrace.st_start);
             symbolname = strcatall(5, "<", backtrace.st_symbol, "+", temp,  ">");
 
-            if (!first_symbol_size)
+            if (!first_symbol_size) {
                 first_symbol_size = strlen(symbolname);
+                padding = first_symbol_size + 4;
+            } 
 
-            s_info("   0x%08x %-*s%s", eip, first_symbol_size + 4, symbolname, disassembled);
+            if (padding < strlen(symbolname))
+                padding = strlen(symbolname) + 1;
+
+            s_info("   0x%08x %-*s%s", eip, padding, symbolname, disassembled);
 
         }
 
@@ -432,6 +453,7 @@ void x86dbg_print_state(x86CPU *cpu)
         if ((eip - ins.size) == registers.eip && ins.handler == x86_mm_jcc) {
             if (branch_is_taken(ins.data, registers.eflags, registers.ecx)) {
                 eip = x86_findbranchtarget_relative(cpu, ins.eip, ins.data);
+                p_start_disassemble_here = eip;
                 s_info("        \033[1m↓\033[0m");
             }
         } else if (ins.handler == x86_mm_call || ins.handler == x86_mm_jcc) {

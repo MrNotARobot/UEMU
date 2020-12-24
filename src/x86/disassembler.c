@@ -182,26 +182,25 @@ char *x86_disassemble(x86CPU *cpu, struct instruction ins)
     xfree(temp);
     temp = NULL;
 
-        if (ins.handler == x86_mm_call || ins.handler == x86_mm_jcc) {
-            moffset32_t branchaddress = x86_findbranchtarget_relative(cpu, ins.eip, ins.data);
-            struct symbol_lookup_record lookup = sr_lookup(x86_resolver(cpu), branchaddress);
-            char *rel = NULL;
-            char *target = int2hexstr(branchaddress, 8);
+    if (ins.handler == x86_mm_call || ins.handler == x86_mm_jcc) {
+        moffset32_t branchaddress = x86_findbranchtarget_relative(cpu, ins.eip, ins.data);
+        struct symbol_lookup_record lookup = sr_lookup(x86_resolver(cpu), branchaddress);
+        char *rel = NULL;
+        char *target = int2hexstr(branchaddress, 8);
 
-            if (lookup.sl_name) {
-                if (lookup.sl_start != branchaddress) {
-                    rel = int2str(branchaddress - lookup.sl_start);
-                    s = strcatall(9, mnemonic, conf_disassm_symbol_colorcode, lookup.sl_name, "+", rel, "\033[0m <", conf_disassm_code_address_colorcode, target, "\033[0m>");
-                } else {
-                    s = strcatall(7, mnemonic, conf_disassm_symbol_colorcode, lookup.sl_name, "\033[0m <", conf_disassm_code_address_colorcode, target, "\033[0m>");
-                }
-
-                xfree(rel);
-                xfree(target);
-                return s;
+        if (lookup.sl_name) {
+            if (lookup.sl_start != branchaddress) {
+                rel = int2str(branchaddress - lookup.sl_start);
+                s = strcatall(9, mnemonic, conf_disassm_symbol_colorcode, lookup.sl_name, "+", rel, "\033[0m <", conf_disassm_code_address_colorcode, target, "\033[0m>");
+            } else {
+                s = strcatall(7, mnemonic, conf_disassm_symbol_colorcode, lookup.sl_name, "\033[0m <", conf_disassm_code_address_colorcode, target, "\033[0m>");
             }
-        }
 
+            xfree(rel);
+            xfree(target);
+            return s;
+        }
+    }
 
     switch (ins.encoding) {
         case rm32_imm32:
@@ -212,6 +211,8 @@ char *x86_disassemble(x86CPU *cpu, struct instruction ins)
                 if (lookup.sl_name) {
                     temp = int2hexstr(ins.data.imm1, 0);
                     immediate = strcatall(6, conf_disassm_symbol_colorcode, lookup.sl_name, "\033[0m <", conf_disassm_data_address_colorcode, temp, "\033[0m>");
+                } else {
+                    immediate = int2hexstr(ins.data.imm1, 0);
                 }
             } else {
                 immediate = int2hexstr(ins.data.imm1, 0);

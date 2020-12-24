@@ -42,7 +42,7 @@ int main(int argc, char **argv, char **envp)
     if (!executable)
         executable = find_executable(program_name);
 
-    x86_cpu_exec(executable, argc, argv, envp);
+    x86_cpu_exec(executable, argc-1, &argv[1], envp);
 
     ASSERT_NOTREACHED();
 }

@@ -6,6 +6,7 @@ set(SRCS
     generic-elf.c
     sym-resolver.c
     tracer.c
+    conf.c
 
     x86/x86-mmu.c
     x86/cpu.c
