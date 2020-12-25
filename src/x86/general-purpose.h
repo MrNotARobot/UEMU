@@ -224,4 +224,17 @@ void x86__mm_r32_m8_movzx(void *, uint8_t, moffset32_t);
 void x86__mm_r32_r16_movzx(void *, uint8_t, uint8_t);
 void x86__mm_r32_m16_movzx(void *, uint8_t, moffset32_t);
 
+
+// JMP
+
+void x86__mm_short_rel8_jmp(void *, int8_t);
+void x86__mm_near_rel16_jmp(void *, int16_t);
+void x86__mm_near_rel32_jmp(void *, int32_t);
+void x86__mm_near_absl_r16_jmp(void *, uint8_t);
+void x86__mm_near_absl_m16_jmp(void *, moffset32_t);
+void x86__mm_near_absl_r32_jmp(void *, uint8_t);
+void x86__mm_near_absl_m32_jmp(void *, moffset32_t);
+void x86__mm_far_absl_ptr16_jmp(void *, uint16_t, moffset16_t);
+void x86__mm_far_absl_ptr32_jmp(void *, uint16_t, moffset32_t);
+
 #endif /* GENERAL_PURPOSE_H */

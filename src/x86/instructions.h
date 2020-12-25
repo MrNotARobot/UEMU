@@ -36,6 +36,7 @@ struct exec_data {
     uint8_t opc;    // opcode used
     uint8_t modrm;
     uint8_t sib;
+    uint8_t is0f;
 
     uint32_t moffset;
     uint32_t imm1;
@@ -330,7 +331,7 @@ void x86_clflush(void *, struct exec_data);
 void x86_cli(void *, struct exec_data);
 void x86_clts(void *, struct exec_data);
 void x86_cmc(void *, struct exec_data);
-void x86_cmovcc(void *, struct exec_data);
+void x86_mm_cmovcc(void *, struct exec_data);
 void x86_mm_cmp(void *, struct exec_data);
 void x86_cmppd(void *, struct exec_data);
 void x86_cmpps(void *, struct exec_data);
@@ -485,7 +486,7 @@ void x86_invd(void *, struct exec_data);
 void x86_invlpg(void *, struct exec_data);
 void x86_iret(void *, struct exec_data);
 void x86_mm_jcc(void *, struct exec_data);
-void x86_jmp(void *, struct exec_data);
+void x86_mm_jmp(void *, struct exec_data);
 void x86_lahf(void *, struct exec_data);
 void x86_lar(void *, struct exec_data);
 void x86_lddqu(void *, struct exec_data);

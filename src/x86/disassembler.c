@@ -216,7 +216,7 @@ char *x86_disassemble(x86CPU *cpu, struct instruction ins)
     }
 
     // POP
-    if (ins.data.opc >= 0x58 && ins.data.opc < 0x60) {
+    if (!ins.data.is0f && ins.data.opc >= 0x58 && ins.data.opc < 0x60) {
         const char *reg;
         if (ins.data.oprsz_pfx)
             reg = stringfyregister(ins.data.opc - 0x58, 16);
@@ -229,21 +229,21 @@ char *x86_disassemble(x86CPU *cpu, struct instruction ins)
     }
 
     // MOV
-    if ((ins.data.opc >= 0xB0 && ins.data.opc < 0xB8)) {
+    if (!ins.data.is0f && (ins.data.opc >= 0xB0 && ins.data.opc < 0xB8)) {
         const char *reg;
         immediate = int2hexstr(ins.data.imm1, 0);
         if (ins.data.oprsz_pfx)
             reg = stringfyregister(ins.data.opc - 0xB0, 16);
         else
             reg = stringfyregister(ins.data.opc - 0xB0, 32);
-        s = strcatall(6, mnemonic, operand_color, reg, num_color, immediate, "\033[0m");
+        s = strcatall(7, mnemonic, operand_color, reg, ", ", num_color, immediate, "\033[0m");
 
         xfree(mnemonic);
         xfree(immediate);
         return s;
     }
     // MOV
-    if ((ins.data.opc >= 0xB8 && ins.data.opc < 0xC0)) {
+    if (!ins.data.is0f && (ins.data.opc >= 0xB8 && ins.data.opc < 0xC0)) {
         const char *reg;
         immediate = int2hexstr(ins.data.imm1, 0);
         if (ins.data.oprsz_pfx)
@@ -509,6 +509,7 @@ struct instruction x86_decode(x86CPU *cpu, moffset32_t eip)
     data.repnz = 0;
     data.rep = 0;
     data.segovr = 0;
+    data.is0f = 0;
 
     ins.fail_to_fetch = 0;
     ins.fail_byte = 0;
@@ -543,6 +544,7 @@ struct instruction x86_decode(x86CPU *cpu, moffset32_t eip)
 
     // 'two-byte' instructions
     if (byte == 0x0F) {
+        data.is0f = 1;
         table = x86_opcode_0f_table;
 
         byte = x86_readM8(cpu, eip);
@@ -573,8 +575,10 @@ struct instruction x86_decode(x86CPU *cpu, moffset32_t eip)
         eip += 1;
 
         if (op.o_use_op_extension) {
-            if (op.o_extensions[reg(data.modrm)].o_opcode)
+            if (op.o_extensions[reg(data.modrm)].o_opcode) {
                 op = op.o_extensions[reg(data.modrm)];
+                data.ext = reg(data.modrm);
+            }
         }
 
         switch (mod(data.modrm)) {
@@ -855,15 +859,15 @@ struct instruction x86_decode(x86CPU *cpu, moffset32_t eip)
 
 moffset32_t x86_findbranchtarget_relative(x86CPU *cpu, moffset32_t eip, struct exec_data data)
 {
-    moffset32_t effctvaddr;
+    moffset32_t vaddr;
 
     if (!cpu)
         return 0;
 
     if (data.oprsz_pfx)
-        effctvaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
+        vaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
     else
-        effctvaddr = x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset);
+        vaddr = x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset);
 
     switch (data.opc) {
         case 0x77:  // JA rel8
@@ -908,27 +912,50 @@ moffset32_t x86_findbranchtarget_relative(x86CPU *cpu, moffset32_t eip, struct e
             return eip + data.bytes + data.imm1;
         case 0xFF:
             if (data.ext == 2) {    // FF /2 CALL r/m32 CALL r/m16
-                if (effctvaddr) {
+                if (vaddr) {
                     if (data.oprsz_pfx)
-                        return x86_readM16(cpu, effctvaddr);
+                        return x86_readM16(cpu, vaddr);
                     else
-                        return x86_readM32(cpu, effctvaddr);
+                        return x86_readM32(cpu, vaddr);
                 } else {
                     if (data.oprsz_pfx)
                         return x86_readR16(cpu, effctvregister(data.modrm, 16));
                     else
                         return x86_readR32(cpu, effctvregister(data.modrm, 32));
                 }
-            } else {    // FF /3 CALL m16:32  CALL m16:16
-                if (data.oprsz_pfx)
-                    return x86_readM16(cpu, effctvaddr + 2) + x86_readM16(cpu, effctvaddr);
-                else
-                    return x86_readM16(cpu, effctvaddr + 4) + x86_readM32(cpu, effctvaddr);
+            } else if (data.ext == 3) {    // FF /3 CALL m16:32  CALL m16:16
+                ASSERT_NOTREACHED();
+            } else if (data.ext == 4) {     // FF /4 JMP r/m32 r/m16
+                if (vaddr) {
+                    if (data.oprsz_pfx)
+                        return x86_readM16(cpu, vaddr);
+                    else
+                        return x86_readM32(cpu, vaddr);
+                } else {
+                    if (data.oprsz_pfx)
+                        return x86_readR16(cpu, effctvregister(data.modrm, 16));
+                    else
+                        return x86_readR32(cpu, effctvregister(data.modrm, 32));
+                }
+            } else if (data.ext == 5)   {   // FF /5 JMP m16:16  m16:32
+                ASSERT_NOTREACHED();
             }
             break;
         case 0x9A:
             ASSERT_NOTREACHED();
             break;
+        // short JMP
+        case 0xE9:
+            if(data.oprsz_pfx)
+                return eip + low16(data.imm1);
+            else
+                return eip + data.imm1;
+        // far JMP ptr16:16 ptr16:32
+        case 0xEA:
+            ASSERT_NOTREACHED();
+        // near JMP
+        case 0xEB:
+            return eip + lsb(data.imm1);
     }
 
     return 0;

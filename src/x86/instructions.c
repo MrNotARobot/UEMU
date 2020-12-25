@@ -783,13 +783,89 @@ void x86_cmc(void *cpu, struct exec_data data)
 }
 
 
-void x86_cmovcc(void *cpu, struct exec_data data)
+void x86_mm_cmovcc(void *cpu, struct exec_data data)
 {
-    (void)cpu, (void)data;
+    _Bool condition_is_true = 0;
+    moffset32_t vaddr;
 
-    
-    x86_stopcpu(cpu);
-    s_error(1, "emulator: Instruction %s not implemented", __FUNCTION__);
+    if (data.lock)
+        x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
+
+    if (data.adrsz_pfx)
+        vaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
+    else
+        vaddr = x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset);
+
+    switch (data.opc) {
+        case 0x47:  // CMOVA
+            condition_is_true = x86_flag_off(cpu, CF) && x86_flag_off(cpu, ZF);
+            break;
+        case 0x43:  // CMOVAE
+            condition_is_true = x86_flag_off(cpu, CF);
+            break;
+        case 0x42:  // CMOVB
+            condition_is_true = x86_flag_on(cpu, CF);
+            break;
+        case 0x46:  // CMOVBE
+            condition_is_true = x86_flag_on(cpu, CF) && x86_flag_on(cpu, ZF);
+            break;
+        case 0x44:  // CMOVE
+            condition_is_true = x86_flag_on(cpu, ZF);
+            break;
+        case 0x4F:  // CMOVG
+            condition_is_true = x86_flag_off(cpu, ZF) && ((x86_flag_on(cpu, SF) && x86_flag_on(cpu, OF)) || (x86_flag_off(cpu, SF) && x86_flag_off(cpu, OF)));
+            break;
+        case 0x4D:  // CMOVGE
+            condition_is_true = (x86_flag_on(cpu, SF) && x86_flag_on(cpu, OF)) || (x86_flag_off(cpu, SF) && x86_flag_off(cpu, OF));
+            break;
+        case 0x4C:  // CMOVL
+            condition_is_true = (x86_flag_on(cpu, SF) && x86_flag_off(cpu, OF)) || (x86_flag_off(cpu, SF) && x86_flag_on(cpu, OF));
+            break;
+        case 0x4E:  // CMOVLE
+            condition_is_true = x86_flag_on(cpu, ZF) && ((x86_flag_on(cpu, SF) && x86_flag_off(cpu, OF)) || (x86_flag_off(cpu, SF) && x86_flag_on(cpu, OF)));
+            break;
+        case 0x45:  // CMOVNE
+            condition_is_true = x86_flag_off(cpu, ZF);
+            break;
+        case 0x41:  // CMOVNO
+            condition_is_true = x86_flag_off(cpu, OF);
+            break;
+        case 0x4B:  // CMOVNP
+            condition_is_true = x86_flag_off(cpu, PF);
+            break;
+        case 0x49:  // CMOVNS
+            condition_is_true = x86_flag_off(cpu, SF);
+            break;
+        case 0x40:  // CMOVO
+            condition_is_true = x86_flag_on(cpu, OF);
+            break;
+        case 0x4A:  // CMOVP
+            condition_is_true = x86_flag_on(cpu, PF);
+            break;
+        case 0x48:  // CMOVS
+            condition_is_true = x86_flag_on(cpu, SF);
+            break;
+    }
+
+    if (condition_is_true) {
+        if (vaddr) {
+            if (data.oprsz_pfx) {
+                if (x86_flag_off(cpu, SF))
+                    x86__mm_r16_m16_mov(cpu, reg(data.modrm), vaddr);
+            } else {
+                if (x86_flag_off(cpu, SF))
+                    x86__mm_r32_m32_mov(cpu, reg(data.modrm), vaddr);
+            }
+        } else {
+            if (data.oprsz_pfx) {
+                if (x86_flag_off(cpu, SF))
+                    x86__mm_r16_r16_mov(cpu, reg(data.modrm), effctvregister(data.modrm, 16));
+            } else {
+                if (x86_flag_off(cpu, SF))
+                    x86__mm_r32_r32_mov(cpu, reg(data.modrm), effctvregister(data.modrm, 32));
+            }
+        }
+    }
 }
 
 
@@ -2494,13 +2570,55 @@ void x86_mm_jcc(void *cpu, struct exec_data data)
 }
 
 
-void x86_jmp(void *cpu, struct exec_data data)
+void x86_mm_jmp(void *cpu, struct exec_data data)
 {
-    (void)cpu, (void)data;
+    moffset32_t vaddr;
 
-    
-    x86_stopcpu(cpu);
-    s_error(1, "emulator: Instruction %s not implemented", __FUNCTION__);
+    if (data.lock)
+        x86_raise_exception_d(cpu, INT_UD, tracer_get(x86_tracer(cpu), TRACE_VAR_EIP), "Invalid LOCK prefix");
+
+    if (data.adrsz_pfx)
+        vaddr = x86_effectiveaddress16(cpu, data.modrm, low16(data.moffset));
+    else
+        vaddr = x86_effectiveaddress32(cpu, data.modrm, data.sib, data.moffset);
+
+    switch (data.opc) {
+        case 0xEB:
+            x86__mm_short_rel8_jmp(cpu, lsb(data.imm1));
+            break;
+        case 0xE9:
+            if (data.oprsz_pfx)
+                x86__mm_near_rel16_jmp(cpu, low16(data.imm1));
+            else
+                x86__mm_near_rel32_jmp(cpu, data.imm1);
+            break;
+        case 0xEA:
+            if (data.oprsz_pfx)
+                x86__mm_far_absl_ptr16_jmp(cpu, data.segovr, low16(data.imm1));
+            else
+                x86__mm_far_absl_ptr32_jmp(cpu, data.segovr, data.imm2);
+            break;
+        case 0xFF:
+            if (data.ext == 4) {
+                if (vaddr) {
+                    if (data.oprsz_pfx)
+                        x86__mm_near_absl_m16_jmp(cpu, vaddr);
+                    else
+                        x86__mm_near_absl_m32_jmp(cpu, vaddr);
+                } else {
+                    if (data.oprsz_pfx)
+                        x86__mm_near_absl_r16_jmp(cpu, effctvregister(data.modrm, 16));
+                    else
+                        x86__mm_near_absl_r32_jmp(cpu, effctvregister(data.modrm, 32));
+                }
+            } else {
+                if (data.oprsz_pfx)
+                    x86__mm_far_absl_ptr16_jmp(cpu, data.segovr, low16(data.imm1));
+                else
+                    x86__mm_far_absl_ptr32_jmp(cpu, data.segovr, data.imm2);
+            }
+            break;
+    }
 }
 
 

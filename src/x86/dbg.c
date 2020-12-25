@@ -371,7 +371,6 @@ void x86dbg_print_state(x86CPU *cpu)
 
         disassembled = x86_disassemble(cpu, ins);
 
-
         if (eip == backtrace.st_start && eip == registers.eip) {
             symbolname = strcatall(3, "<", backtrace.st_symbol, ">");
 
@@ -453,13 +452,24 @@ void x86dbg_print_state(x86CPU *cpu)
                 p_start_disassemble_here = eip;
                 s_info("        \033[1m↓\033[0m");
             }
-        } else if (ins.handler == x86_mm_call || ins.handler == x86_mm_jcc) {
-            s_info(" ");
+        } else if (ins.handler == x86_mm_jmp) {
+                moffset32_t new_eip = x86_findbranchtarget_relative(cpu, ins.eip, ins.data);
+                if (x86_ptrtype(cpu, new_eip) == CODE_PTR) {
+                    if ((eip - ins.size) == registers.eip)
+                        p_start_disassemble_here = new_eip;
+
+                    eip = new_eip;
+                    s_info("        \033[1m↓\033[0m");
+
+                }
         } else if (ins.handler == x86_mm_ret && backtrace_size) {
             s_info("        \033[1m↓\033[0m");
             backtrace = tracer_get_backtrace(x86_tracer(cpu), backtrace_size-1);
             eip = backtrace.st_start + backtrace.st_rel;
         }
+
+        if (ins.handler == x86_mm_call || ins.handler == x86_mm_jcc)
+            s_info(" ");
 
         if (eip == backtrace.st_end)
             break;

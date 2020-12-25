@@ -790,9 +790,9 @@ void x86_init_opcode_table(void)
     register_op(0xE6, "OUT", NONE, imm8_AL, imm8_AL, NO_RM, INSTR, x86_out);
     register_op(0xE7, "OUT", NONE, imm8_eAX, imm8_AX, NO_RM, INSTR, x86_out);
     register_op(0xE8, "CALL", NONE, rela32, rela16, NO_RM, INSTR, x86_mm_call);
-    register_op(0xE9, "JMP", NONE, rela32, rela16, NO_RM, INSTR, x86_jmp);
-    register_op(0xEA, "JMP", NONE, ptr16_32, ptr16_16, NO_RM, INSTR, x86_jmp);
-    register_op(0xEB, "JMP", NONE, rela8, rela8, NO_RM, INSTR, x86_jmp);
+    register_op(0xE9, "JMP", NONE, rela32, rela16, NO_RM, INSTR, x86_mm_jmp);
+    register_op(0xEA, "JMP", NONE, ptr16_32, ptr16_16, NO_RM, INSTR, x86_mm_jmp);
+    register_op(0xEB, "JMP", NONE, rela8, rela8, NO_RM, INSTR, x86_mm_jmp);
     register_op(0xEC, "IN", NONE, OP, OP, NO_RM, INSTR, x86_in);
     register_op(0xED, "IN", NONE, OP, OP, NO_RM, INSTR, x86_in);
     register_op(0xEE, "OUT", NONE, OP, OP, NO_RM, INSTR, x86_out);
@@ -830,8 +830,8 @@ void x86_init_opcode_table(void)
     register_op_ext(0xFF, 1, "DEC", NONE, rm32, rm16, USE_RM, INSTR, x86_dec);
     register_op_ext(0xFF, 2, "CALL", NONE, rm32, rm16, USE_RM, INSTR, x86_mm_call);
     register_op_ext(0xFF, 3, "CALL", NONE, m16_32, m16_16, USE_RM, INSTR, x86_mm_call);
-    register_op_ext(0xFF, 4, "JMP", NONE, rm32, rm16, USE_RM, INSTR, x86_jmp);
-    register_op_ext(0xFF, 5, "JMP", NONE, rm32, rm16, USE_RM, INSTR, x86_jmp);
+    register_op_ext(0xFF, 4, "JMP", NONE, rm32, rm16, USE_RM, INSTR, x86_mm_jmp);
+    register_op_ext(0xFF, 5, "JMP", NONE, rm32, rm16, USE_RM, INSTR, x86_mm_jmp);
     register_op_ext(0xFF, 6, "PUSH", NONE, rm32, rm16, USE_RM, INSTR, x86_mm_push);
 
 
@@ -1059,22 +1059,22 @@ void x86_init_opcode_table(void)
     register_0f_op_prefix_sec(0x66, 0x3A, 0xCC, "SHA1RNDS4", SHA, xmm1_xmm2m128_imm8, xmm1_xmm2m128_imm8, USE_RM, INSTR, x86_sha1rnds4);
     register_0f_op_prefix_sec(0x66, 0x3A, 0xDF, "AESKEYGENASSIST", AES, xmm1_xmm2m128_imm8, xmm1_xmm2m128_imm8, USE_RM, INSTR, x86_aeskeygenassist);
 
-    register_0f_op(0x40, "CMOVO", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_cmovcc);
-    register_0f_op(0x41, "CMOVNO", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_cmovcc);
-    register_0f_op(0x42, "CMOVB", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_cmovcc);
-    register_0f_op(0x43, "CMOVAE", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_cmovcc);
-    register_0f_op(0x44, "CMOVE", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_cmovcc);
-    register_0f_op(0x45, "CMOVNE", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_cmovcc);
-    register_0f_op(0x46, "CMOVBE", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_cmovcc);
-    register_0f_op(0x47, "CMOVA", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_cmovcc);
-    register_0f_op(0x48, "CMOVPO", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_cmovcc);
-    register_0f_op(0x49, "CMOVNS", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_cmovcc);
-    register_0f_op(0x4A, "CMOVP", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_cmovcc);
-    register_0f_op(0x4B, "CMOVNP", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_cmovcc);
-    register_0f_op(0x4C, "CMOVL", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_cmovcc);
-    register_0f_op(0x4D, "CMOVGE", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_cmovcc);
-    register_0f_op(0x4E, "CMOVLE", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_cmovcc);
-    register_0f_op(0x4F, "CMOVG", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_cmovcc);
+    register_0f_op(0x40, "CMOVO", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_mm_cmovcc);
+    register_0f_op(0x41, "CMOVNO", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_mm_cmovcc);
+    register_0f_op(0x42, "CMOVB", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_mm_cmovcc);
+    register_0f_op(0x43, "CMOVAE", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_mm_cmovcc);
+    register_0f_op(0x44, "CMOVE", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_mm_cmovcc);
+    register_0f_op(0x45, "CMOVNE", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_mm_cmovcc);
+    register_0f_op(0x46, "CMOVBE", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_mm_cmovcc);
+    register_0f_op(0x47, "CMOVA", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_mm_cmovcc);
+    register_0f_op(0x48, "CMOVPO", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_mm_cmovcc);
+    register_0f_op(0x49, "CMOVNS", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_mm_cmovcc);
+    register_0f_op(0x4A, "CMOVP", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_mm_cmovcc);
+    register_0f_op(0x4B, "CMOVNP", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_mm_cmovcc);
+    register_0f_op(0x4C, "CMOVL", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_mm_cmovcc);
+    register_0f_op(0x4D, "CMOVGE", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_mm_cmovcc);
+    register_0f_op(0x4E, "CMOVLE", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_mm_cmovcc);
+    register_0f_op(0x4F, "CMOVG", NONE, r32_rm32, r16_rm16, USE_RM, INSTR, x86_mm_cmovcc);
     register_0f_op(0x50, "MOVMSKPS", SSE, r32_xmm, r32_xmm, USE_RM, INSTR, x86_movmskps);
     register_0f_op_prefix(0x66, 0x50, "MOVMSKPD", SSE2, r32_xmm, r32_xmm, USE_RM, INSTR, x86_movmskpd);
     register_0f_op(0x51, "SQRTPS", SSE, xmm1_xmm2m128, xmm1_xmm2m128, USE_RM, INSTR, x86_sqrtps);

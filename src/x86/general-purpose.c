@@ -1872,3 +1872,53 @@ void x86__mm_r32_m16_movzx(void *cpu, uint8_t dest, moffset32_t src)
 {
     x86__mm_r32_imm32_mov(cpu, dest, zeroxtnd16(x86_readM16(cpu, src)));
 }
+
+
+// JMP
+
+void x86__mm_short_rel8_jmp(void *cpu, int8_t rel)
+{
+    x86_update_eip_absolute(cpu, x86_readR32(cpu, EIP) + sign8to32(rel));
+}
+
+void x86__mm_near_rel16_jmp(void *cpu, int16_t rel)
+{
+    x86_update_eip_absolute(cpu, x86_readR32(cpu, EIP) + sign16to32(rel));
+}
+
+void x86__mm_near_rel32_jmp(void *cpu, int32_t rel)
+{
+    x86_update_eip_absolute(cpu, x86_readR32(cpu, EIP) + rel);
+}
+
+void x86__mm_near_absl_r16_jmp(void *cpu, uint8_t src)
+{
+    x86_update_eip_absolute(cpu, zeroxtnd16(x86_readR16(cpu, src)));
+}
+
+void x86__mm_near_absl_m16_jmp(void *cpu, moffset32_t src)
+{
+    x86_update_eip_absolute(cpu, zeroxtnd16(x86_readM16(cpu, src)));
+}
+
+void x86__mm_near_absl_r32_jmp(void *cpu, uint8_t src)
+{
+    x86_update_eip_absolute(cpu, x86_readR32(cpu, src));
+}
+
+void x86__mm_near_absl_m32_jmp(void *cpu, moffset32_t src)
+{
+    x86_update_eip_absolute(cpu, x86_readM32(cpu, src));
+}
+
+void x86__mm_far_absl_ptr16_jmp(void *cpu, uint16_t segment, moffset16_t offset)
+{
+    x86_writeR32(cpu, CS, segment);
+    x86_update_eip_absolute(cpu, offset);
+}
+
+void x86__mm_far_absl_ptr32_jmp(void *cpu, uint16_t segment, moffset32_t offset)
+{
+    x86_writeR32(cpu, CS, segment);
+    x86_update_eip_absolute(cpu, offset);
+}
