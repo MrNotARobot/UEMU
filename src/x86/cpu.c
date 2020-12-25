@@ -35,6 +35,8 @@
 #include "dbg.h"
 #include "disassembler.h"
 
+static const char *dl_platform = "uemu_x86";
+
 static uint32_t readMx(x86CPU *cpu, moffset32_t vaddr, int size, _Bool);
 static void writeMx(x86CPU *cpu, moffset32_t vaddr, uint64_t src, int size);
 static void build_environment(x86CPU *, int, char **, char **);
@@ -578,6 +580,14 @@ int x86_ptrtype(x86CPU *cpu, moffset32_t vaddr)
 
 //////////////
 
+#define NEW_AUXV(cpu, id, val)   \
+    do {    \
+        x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) - 4);   \
+        x86_writeM32(cpu, x86_readR32(cpu, ESP), val);  \
+        x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) - 4);   \
+        x86_writeM32(cpu, x86_readR32(cpu, ESP), id);   \
+    } while (0)
+
 static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
 {
     size_t environsz = 0;
@@ -623,34 +633,21 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
     }
 
     // padding
-    x86_writeR32(cpu, x86_readR32(cpu, ESP), x86_readR32(cpu, ESP) - 8);
-    x86_writeM64(cpu, x86_readR32(cpu, ESP), 0);
-
-    // Auxiliary vector
-    x86_writeR32(cpu, x86_readR32(cpu, ESP), x86_readR32(cpu, ESP) - 4);
-    x86_writeM32(cpu, x86_readR32(cpu, ESP), AT_UID);
-    x86_writeR32(cpu, x86_readR32(cpu, ESP), x86_readR32(cpu, ESP) - 4);
-    x86_writeM32(cpu, x86_readR32(cpu, ESP), getuid());
-
-    x86_writeR32(cpu, x86_readR32(cpu, ESP), x86_readR32(cpu, ESP) - 4);
-    x86_writeM32(cpu, x86_readR32(cpu, ESP), AT_EUID);
-    x86_writeR32(cpu, x86_readR32(cpu, ESP), x86_readR32(cpu, ESP) - 4);
-    x86_writeM32(cpu, x86_readR32(cpu, ESP), geteuid());
-
-    x86_writeR32(cpu, x86_readR32(cpu, ESP), x86_readR32(cpu, ESP) - 4);
-    x86_writeM32(cpu, x86_readR32(cpu, ESP), AT_GID);
-    x86_writeR32(cpu, x86_readR32(cpu, ESP), x86_readR32(cpu, ESP) - 4);
-    x86_writeM32(cpu, x86_readR32(cpu, ESP), getgid());
-
-    x86_writeR32(cpu, x86_readR32(cpu, ESP), x86_readR32(cpu, ESP) - 4);
-    x86_writeM32(cpu, x86_readR32(cpu, ESP), AT_EGID);
-    x86_writeR32(cpu, x86_readR32(cpu, ESP), x86_readR32(cpu, ESP) - 4);
-    x86_writeM32(cpu, x86_readR32(cpu, ESP), getegid());
-
+    x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) - 8);
 
     // align the stack
     alignment = ((cpu->ESP & 0xfffffff0) - ((environsz + argc + 2)*4 + 4)) & 0x0000000f;
     cpu->ESP = ((cpu->ESP) & 0xfffffff0) - alignment;
+
+    // Auxiliary vector
+    NEW_AUXV(cpu, AT_NULL, (unsigned long) 0);
+    NEW_AUXV(cpu, AT_UID, (unsigned long) getuid());
+    NEW_AUXV(cpu, AT_EUID, (unsigned long) geteuid());
+    NEW_AUXV(cpu, AT_GID, (unsigned long) getgid());
+    NEW_AUXV(cpu, AT_EGID, (unsigned long) getegid());
+    NEW_AUXV(cpu, AT_PAGESZ, (unsigned long) sysconf(_SC_PAGESIZE));
+    NEW_AUXV(cpu, AT_PAGESZ, (unsigned long) sysconf(_SC_PAGESIZE));
+    NEW_AUXV(cpu, AT_PLATFORM, (unsigned long)&dl_platform);
 
     // the NULL ptr at the end of envp
     environ_[environsz] = 0;
@@ -672,6 +669,7 @@ static void build_environment(x86CPU *cpu, int argc, char *argv[], char **envp)
 
     x86_writeR32(cpu, ESP, x86_readR32(cpu, ESP) - 4);
     x86_writeM32(cpu, cpu->ESP, argc);
+
 
     xfree(argv[0]);
     xfree(environ_);

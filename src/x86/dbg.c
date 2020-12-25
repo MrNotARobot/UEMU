@@ -333,7 +333,7 @@ void x86dbg_print_state(x86CPU *cpu)
     }
 
 
-    s_info("\033[34m%08x\033[0m in \033[33m%s\033[0m ()", registers.eip, backtrace.st_symbol);
+    s_info("\033[34m0x%08x\033[0m in \033[33m%s\033[0m ()", registers.eip, backtrace.st_symbol);
     s_info("LEGEND: %sSTACK\033[0m | %sHEAP\033[0m | %sCODE\033[0m | %sDATA\033[0m | RODATA",
             conf_x86dbg_stack_colorcode, conf_x86dbg_heap_colorcode, conf_x86dbg_code_colorcode, conf_x86dbg_data_colorcode);
 

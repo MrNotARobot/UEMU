@@ -762,17 +762,17 @@ void x86__mm_r32_imm32_mov(void *cpu, uint8_t dest, uint32_t imm)
     x86_writeR32(cpu, dest, imm);
 }
 
-void x86__mm_m8_imm8_mov(void *cpu, uint8_t dest, uint8_t imm)
+void x86__mm_m8_imm8_mov(void *cpu, moffset32_t dest, uint8_t imm)
 {
     x86_writeM8(cpu, dest, imm);
 }
 
-void x86__mm_m16_imm16_mov(void *cpu, uint8_t dest, uint8_t imm)
+void x86__mm_m16_imm16_mov(void *cpu, moffset32_t dest, uint8_t imm)
 {
     x86_writeM16(cpu, dest, imm);
 }
 
-void x86__mm_m32_imm32_mov(void *cpu, uint8_t dest, uint8_t imm)
+void x86__mm_m32_imm32_mov(void *cpu, moffset32_t dest, uint8_t imm)
 {
     x86_writeM32(cpu, dest, imm);
 }

@@ -392,6 +392,7 @@ void writex(x86MMU *mmu, uint64_t bytes, moffset32_t virtaddr, int size)
         return;
 
     buffer = translate(mmu, virtaddr);
+
     if (!buffer) {
         mmu_set_error(mmu, ESEGFAULT, "Segmentation Fault at 0x%lx", virtaddr);
         return;

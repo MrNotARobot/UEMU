@@ -154,6 +154,8 @@ char *x86_disassemble(x86CPU *cpu, struct instruction ins)
     char *s = NULL;
     uint8_t mnemonic_spacing = 8;
     size_t mnemonic_size;
+    const char *operand_color = conf_disassm_operand_colorcode;
+    const char *num_color = conf_disassm_number_colorcode;
 
     if (ins.encoding == no_encoding)
         return NULL;
@@ -199,6 +201,63 @@ char *x86_disassemble(x86CPU *cpu, struct instruction ins)
         }
     }
 
+    // PUSH
+    if (ins.data.opc >= 0x50 && ins.data.opc < 0x58) {
+        const char *reg;
+        if (ins.data.oprsz_pfx)
+            reg = stringfyregister(ins.data.opc - 0x50, 16);
+        else
+            reg = stringfyregister(ins.data.opc - 0x50, 32);
+
+
+        s = strcatall(4, mnemonic, operand_color, reg, "\033[0m");
+        xfree(mnemonic);
+        return s;
+    }
+
+    // POP
+    if (ins.data.opc >= 0x58 && ins.data.opc < 0x60) {
+        const char *reg;
+        if (ins.data.oprsz_pfx)
+            reg = stringfyregister(ins.data.opc - 0x58, 16);
+        else
+            reg = stringfyregister(ins.data.opc - 0x58, 32);
+
+        s = strcatall(4, mnemonic, operand_color, reg, "\033[0m");
+        xfree(mnemonic);
+        return s;
+    }
+
+    // MOV
+    if ((ins.data.opc >= 0xB0 && ins.data.opc < 0xB8)) {
+        const char *reg;
+        immediate = int2hexstr(ins.data.imm1, 0);
+        if (ins.data.oprsz_pfx)
+            reg = stringfyregister(ins.data.opc - 0xB0, 16);
+        else
+            reg = stringfyregister(ins.data.opc - 0xB0, 32);
+        s = strcatall(6, mnemonic, operand_color, reg, num_color, immediate, "\033[0m");
+
+        xfree(mnemonic);
+        xfree(immediate);
+        return s;
+    }
+    // MOV
+    if ((ins.data.opc >= 0xB8 && ins.data.opc < 0xC0)) {
+        const char *reg;
+        immediate = int2hexstr(ins.data.imm1, 0);
+        if (ins.data.oprsz_pfx)
+            reg = stringfyregister(ins.data.opc - 0xC8, 16);
+        else
+            reg = stringfyregister(ins.data.opc - 0xB8, 32);
+
+        s = strcatall(7, mnemonic, operand_color, reg, "\033[0m, ", num_color, immediate, "\033[0m");
+
+        xfree(mnemonic);
+        xfree(immediate);
+        return s;
+    }
+
     switch (ins.encoding) {
         case rm32_imm32:
         case rm32_imm8:
@@ -214,17 +273,17 @@ char *x86_disassemble(x86CPU *cpu, struct instruction ins)
             } else {
                 immediate = int2hexstr(ins.data.imm1, 0);
             }
-            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
+            s = strcatall(6, mnemonic, arg, ", ", num_color, immediate, "\033[0m");
             break;
         case rm8_imm8:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 8);
             immediate = int2hexstr(ins.data.imm1, 0);
-            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
+            s = strcatall(6, mnemonic, arg, ", ", num_color, immediate, "\033[0m");
             break;
         case rm16_imm8:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
             immediate = int2hexstr(ins.data.imm1, 0);
-            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
+            s = strcatall(6, mnemonic, arg, ", ", num_color, immediate, "\033[0m");
             break;
         case rela8:
         case imm8:
@@ -241,29 +300,29 @@ char *x86_disassemble(x86CPU *cpu, struct instruction ins)
             } else {
                 immediate = int2hexstr(ins.data.imm1, 0);
             }
-            s = strcatall(4, mnemonic, conf_disassm_number_colorcode, immediate, "\033[0m");
+            s = strcatall(4, mnemonic, num_color, immediate, "\033[0m");
             break;
         case imm8_AL:
             immediate = int2hexstr(ins.data.imm1, 0);
-            s = strcatall(7, mnemonic, conf_disassm_number_colorcode,  immediate, ", ", conf_disassm_operand_colorcode, "al", "\033[0m");
+            s = strcatall(6, mnemonic, num_color,  immediate, ", ", operand_color, "al\033[0m");
             break;
         case imm8_AX:
             immediate = int2hexstr(ins.data.imm1, 0);
-            s = strcatall(7, mnemonic, conf_disassm_number_colorcode, immediate, ", ", conf_disassm_operand_colorcode, "ax", "\033[0m");
+            s = strcatall(6, mnemonic, num_color, immediate, ", ", operand_color, "ax\033[0m");
             break;
         case imm32_eAX:
         case imm8_eAX:
             immediate = int2hexstr(ins.data.imm1, 0);
-            s = strcatall(7, mnemonic, conf_disassm_number_colorcode, immediate, ", ", conf_disassm_operand_colorcode, "eax", "\033[0m");
+            s = strcatall(6, mnemonic, num_color, immediate, ", ", operand_color, "eax\033[0m");
             break;
         case AL_imm8:
             immediate = int2hexstr(ins.data.imm1, 0);
-            s = strcatall(7, mnemonic, conf_disassm_operand_colorcode, "al\033[0m", ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
+            s = strcatall(6, mnemonic, operand_color, "al\033[0m, ", num_color, immediate, "\033[0m");
             break;
         case AX_imm16:
         case AX_imm8:
             immediate = int2hexstr(ins.data.imm1, 0);
-            s = strcatall(7, mnemonic, conf_disassm_operand_colorcode, "ax\033[0m", ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
+            s = strcatall(6, mnemonic, operand_color, "ax\033[0m, ", num_color, immediate, "\033[0m");
             break;
         case eAX_imm32:
         case eAX_imm8:
@@ -276,25 +335,25 @@ char *x86_disassemble(x86CPU *cpu, struct instruction ins)
             } else {
                 immediate = int2hexstr(ins.data.imm1, 0);
             }
-            s = strcatall(8, mnemonic, conf_disassm_operand_colorcode, "eax", "\033[0m", ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
+            s = strcatall(6, mnemonic, operand_color, "eax\033[0m, ", num_color, immediate, "\033[0m");
             break;
         case mm1_imm8:
             immediate = int2hexstr(ins.data.imm1, 0);
-            s = strcatall(8, mnemonic, conf_disassm_operand_colorcode, "mm1", "\033[0m", ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
+            s = strcatall(6, mnemonic, operand_color, "mm1\033[0m, ", num_color, immediate, "\033[0m");
             break;
         case xmm1_imm8:
             immediate = int2hexstr(ins.data.imm1, 0);
-            s = strcatall(8, mnemonic, conf_disassm_operand_colorcode, "xmm1", "\033[0m", ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
+            s = strcatall(6, mnemonic, operand_color, "xmm1\033[0m, ", num_color, immediate, "\033[0m");
             break;
         case rm16_imm16:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
             immediate = int2hexstr(ins.data.imm1, 0);
-            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
+            s = strcatall(6, mnemonic, arg, ", ", num_color, immediate, "\033[0m");
             break;
         case imm16_imm8:
             arg = int2hexstr(ins.data.imm1, 0);
             immediate = int2hexstr(ins.data.imm2, 0);
-            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_number_colorcode, immediate, "\033[0m");
+            s = strcatall(6, mnemonic, arg, ", ", num_color, immediate, "\033[0m");
             break;
         case rm8:
         case m8:
@@ -313,94 +372,94 @@ char *x86_disassemble(x86CPU *cpu, struct instruction ins)
             break;
         case rm8_1:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 8);
-            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_number_colorcode, "1", "\033[0m");
+            s = strcatall(6, mnemonic, arg, ", ", num_color, "1", "\033[0m");
             break;
         case rm8_CL:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 8);
-            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_operand_colorcode, "CL", "\033[0m");
+            s = strcatall(6, mnemonic, arg, ", ", operand_color, "CL", "\033[0m");
             break;
         case rm8_r8:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 8);
-            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_operand_colorcode, stringfyregister(reg32to8(ins.data.modrm), 8), "\033[0m");
+            s = strcatall(6, mnemonic, arg, ", ", operand_color, stringfyregister(reg32to8(reg(ins.data.modrm)), 8), "\033[0m");
             break;
         case rm16_1:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
-            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_number_colorcode, "1", "\033[0m");
+            s = strcatall(5, mnemonic, arg, ", ", num_color, "1\033[0m");
             break;
         case rm16_CL:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
-            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_operand_colorcode, "CL", "\033[0m");
+            s = strcatall(5, mnemonic, arg, ", ", operand_color, "CL\033[0m");
             break;
         case rm16_r16:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
-            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 16), "\033[0m");
+            s = strcatall(6, mnemonic, arg, ", ", operand_color, stringfyregister(reg(ins.data.modrm), 16), "\033[0m");
             break;
         case rm16_r16_CL:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
-            s = strcatall(8, mnemonic, arg, ", ", conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 16), "\033[0m, ", conf_disassm_operand_colorcode, "CL\033[0m");
+            s = strcatall(8, mnemonic, arg, ", ", operand_color, stringfyregister(reg(ins.data.modrm), 16), "\033[0m, ", operand_color, "CL\033[0m");
             break;
         case rm32_1:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 32);
-            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_number_colorcode, "1", "\033[0m");
+            s = strcatall(5, mnemonic, arg, ", ", num_color, "1\033[0m");
             break;
         case rm32_CL:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 32);
-            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_operand_colorcode, "CL", "\033[0m");
+            s = strcatall(5, mnemonic, arg, ", ", operand_color, "CL\033[0m");
             break;
         case m32_r32:
         case rm32_r32:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 32);
-            s = strcatall(6, mnemonic, arg, ", ", conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 32), "\033[0m");
+            s = strcatall(6, mnemonic, arg, ", ", operand_color, stringfyregister(reg(ins.data.modrm), 32), "\033[0m");
             break;
         case rm32_r32_CL:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 32);
-            s = strcatall(7, mnemonic, arg, ", ", conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 32), "\033[0m", ", ", conf_disassm_operand_colorcode, "CL\033[0m");
+            s = strcatall(8, mnemonic, arg, ", ", operand_color, stringfyregister(reg(ins.data.modrm), 32), "\033[0m, ", operand_color, "CL\033[0m");
             break;
         case r8_rm8:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 8);
-            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 8), "\033[0m, ", arg);
+            s = strcatall(5, mnemonic, operand_color, stringfyregister(reg(ins.data.modrm), 8), "\033[0m, ", arg);
             break;
         case r16_rm8:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 8);
-            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 16), "\033[0m, ", arg);
+            s = strcatall(5, mnemonic, operand_color, stringfyregister(reg(ins.data.modrm), 16), "\033[0m, ", arg);
             break;
         case r16_m16:
         case r16_rm16:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
-            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 16), "\033[0m, ", arg);
+            s = strcatall(5, mnemonic, operand_color, stringfyregister(reg(ins.data.modrm), 16), "\033[0m, ", arg);
             break;
         case r32_m32:
         case r32_rm32:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 32);
-            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 32), "\033[0m, ", arg);
+            s = strcatall(5, mnemonic, operand_color, stringfyregister(reg(ins.data.modrm), 32), "\033[0m, ", arg);
             break;
         case r32_rm8:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 8);
-            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 32), "\033[0m, ", arg);
+            s = strcatall(5, mnemonic, operand_color, stringfyregister(reg(ins.data.modrm), 32), "\033[0m, ", arg);
             break;
         case r32_rm16:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
-            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 32), "\033[0m, ", arg);
+            s = strcatall(5, mnemonic, operand_color, stringfyregister(reg(ins.data.modrm), 32), "\033[0m, ", arg);
             break;
         case AX_r16:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 16);
-            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, stringfyregister(AX, 16), "\033[0m, ", arg);
+            s = strcatall(5, mnemonic, operand_color, stringfyregister(AX, 16), "\033[0m, ", arg);
             break;
         case eAX_r32:
             arg = modrm2str(ins.data.modrm, ins.data.sib, ins.data.moffset, 32);
-            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, stringfyregister(EAX, 32), "\033[0m, ", arg);
+            s = strcatall(5, mnemonic, operand_color, stringfyregister(EAX, 32), "\033[0m, ", arg);
             break;
         case mm1_mm2:
-            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, "mm1\033[0m, ", conf_disassm_operand_colorcode, "mm2\033[0m");
+            s = strcatall(5, mnemonic, operand_color, "mm1\033[0m, ", operand_color, "mm2\033[0m");
             break;
         case xmm1_xmm2:
-            s = strcatall(5, mnemonic, conf_disassm_operand_colorcode, "xmm1\033[0m, ", conf_disassm_operand_colorcode, "xmm2\033[0m");
+            s = strcatall(5, mnemonic, operand_color, "xmm1\033[0m, ", operand_color, "xmm2\033[0m");
             break;
         case r16:
-            s = strcatall(4, mnemonic, conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 16), "\033[0m");
+            s = strcatall(4, mnemonic, operand_color, stringfyregister(reg(ins.data.modrm), 16), "\033[0m");
             break;
         case r32:
-            s = strcatall(4, mnemonic, conf_disassm_operand_colorcode, stringfyregister(reg(ins.data.modrm), 32), "\033[0m");
+            s = strcatall(4, mnemonic, operand_color, stringfyregister(reg(ins.data.modrm), 32), "\033[0m");
             break;
         default:
             s = xstrdup(mnemonic);

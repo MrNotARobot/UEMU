@@ -108,9 +108,9 @@ void x86__mm_sreg_m16_mov(void *, uint8_t, moffset32_t);
 void x86__mm_r8_imm8_mov(void *, uint8_t, uint8_t);
 void x86__mm_r16_imm16_mov(void *, uint8_t, uint16_t);
 void x86__mm_r32_imm32_mov(void *, uint8_t, uint32_t);
-void x86__mm_m8_imm8_mov(void *, uint8_t, uint8_t);
-void x86__mm_m16_imm16_mov(void *, uint8_t, uint8_t);
-void x86__mm_m32_imm32_mov(void *, uint8_t, uint8_t);
+void x86__mm_m8_imm8_mov(void *, moffset32_t, uint8_t);
+void x86__mm_m16_imm16_mov(void *, moffset32_t, uint8_t);
+void x86__mm_m32_imm32_mov(void *, moffset32_t, uint8_t);
 
 
 // RET
